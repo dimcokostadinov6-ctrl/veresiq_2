@@ -1,145 +1,295 @@
-/* ===== помощни ===== */
-const $=(s,p=document)=>p.querySelector(s);
-const $$=(s,p=document)=>[...p.querySelectorAll(s)];
-const msg=$('#msg'); let msgT=null;
-function toast(t,ms=2000){ clearTimeout(msgT); msg.textContent=t; msg.classList.remove('hidden'); msgT=setTimeout(()=>msg.classList.add('hidden'),ms); }
-const DB_KEY='veresia-db-v3';
-const LAST_NAME='veresia:lastName';
-const fmt = n => (Number(n)||0).toFixed(2);
+/* ========== Настройки ========== */
+const CANVAS_BG_LINE_GAP = 24;      // разстояние между сините линии
+const PEN_COLOR = "#ffffff";
+const PEN_WIDTH = 3.2;
+const STRIKE_WIDTH = 6.0;           // по-дебела линия за зачертаване
+const STRAIGHT_TOL = 2.2;           // допуск за „правa линия“ (px стандартно отклонение)
+const MIN_STRIKE_LEN = 180;         // минимална дължина за жест „зачертаване“
 
-/* ===== база (localStorage) ===== */
-const db = {
-  all(){ return JSON.parse(localStorage.getItem(DB_KEY)||'[]'); },
-  save(arr){ localStorage.setItem(DB_KEY, JSON.stringify(arr)); },
-  add(rec){ const a=this.all(); a.push(rec); this.save(a); },
-  del(rid){ const a=this.all().filter(x=>x.rid!==rid); this.save(a); },
-  byName(name){ const k=(name||'').toLowerCase().trim(); return this.all().filter(x=>x.nameLower===k).sort((A,B)=>B.ts-A.ts);}
-};
-const lastName = { get:()=>localStorage.getItem(LAST_NAME)||'', set:v=>localStorage.setItem(LAST_NAME,(v||'').trim()) };
+/* IndexedDB: таблица entries */
+const db = localforage.createInstance({ name: "veresia", storeName: "entries" });
+/* форма на запис: { id, name, amount, imgName, ts } */
 
-/* ===== платно ===== */
-const pad = $('#pad');
-let ctx, dpr=1, drawing=false, pid=null, stroke=[], history=[];
-function resize(){
-  const r=pad.getBoundingClientRect(); dpr=Math.max(1,window.devicePixelRatio||1);
-  pad.width=Math.round(r.width*dpr); pad.height=Math.round(r.height*dpr);
-  ctx=pad.getContext('2d'); ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#f1f5ff';
-  draw();
-}
-function draw(){
-  ctx.clearRect(0,0,pad.width,pad.height);
-  for(const s of history) drawStroke(s);
-  if(stroke.length>1) drawStroke(stroke);
-}
-function drawStroke(s){
-  const g=ctx; g.beginPath(); let lastW=2*dpr;
-  g.moveTo(s[0].x*dpr,s[0].y*dpr);
-  for(let i=1;i<s.length;i++){
-    const a=s[i-1], b=s[i]; const mx=(a.x+b.x)/2*dpr, my=(a.y+b.y)/2*dpr;
-    const w = 1.6*dpr + 2.2*(b.p||0.4)*dpr; g.lineWidth = lastW = lastW*.7 + w*.3;
-    g.quadraticCurveTo(a.x*dpr,a.y*dpr,mx,my);
-  } g.stroke();
-}
-const isPen = e=> e.pointerType==='pen' || e.pointerType==='touch';
-const pres = e=> (e.pressure==null||e.pressure===0)?0.35:Math.max(.1,Math.min(1,e.pressure));
-
-pad.addEventListener('pointerdown', e=>{
-  if(!isPen(e)) return; e.preventDefault(); pad.setPointerCapture(e.pointerId);
-  drawing=true; pid=e.pointerId; stroke=[{x:e.offsetX,y:e.offsetY,p:pres(e)}];
-});
-pad.addEventListener('pointermove', e=>{
-  if(!drawing || e.pointerId!==pid) return; e.preventDefault();
-  const pt={x:e.offsetX,y:e.offsetY,p:pres(e)}; const last=stroke[stroke.length-1];
-  if(Math.hypot(pt.x-last.x,pt.y-last.y)<0.5) return; stroke.push(pt); draw();
-});
-['pointerup','pointercancel','pointerleave','pointerout'].forEach(ev=>{
-  pad.addEventListener(ev,e=>{
-    if(e.pointerId!==pid) return; e.preventDefault();
-    if(stroke.length>1){ 
-      // ако е дълга сравнително права линия => „зачертаване“
-      if(isStrike(stroke)){ handleStrike(stroke); }
-      else { history.push(stroke); }
-    }
-    stroke=[]; drawing=false; pid=null; draw();
-  });
-});
-['touchstart','touchmove','wheel','gesturestart','gesturechange'].forEach(ev=> pad.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
-window.addEventListener('resize',resize); setTimeout(resize,0);
-
-/* ===== бутони ===== */
-$('#btnUndo').onclick=()=>{ history.pop(); draw(); };
-$('#btnClear').onclick=()=>{ history=[]; draw(); };
-$('#btnSearchToggle').onclick=()=> document.body.classList.toggle('search-open');
-
-/* ===== OCR (български, чрез Tesseract.js) ===== */
-let tessReady=false, tessWorker=null;
-async function ensureTesseract(){
-  if(tessReady) return;
-  tessWorker = await Tesseract.createWorker({
-    logger: m => { /* console.log(m.status, m.progress) */ }
-  });
-  await tessWorker.loadLanguage('bul'); // български език
-  await tessWorker.initialize('bul');
-  tessReady=true;
-}
-
-/* извличане на име и сума от OCR текста */
-function parseNameAndAmount(text){
-  // взимаме първия приличен ред за „име“ (има букви, поне 2 знака), и търсим число за сума
-  const lines = text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
-  let name = lines.find(s=>/[А-ЯA-ZЁЇІЄ][а-яa-zёїіє]{1,}/.test(s)) || '';
-  // чистим странни символи
-  name = name.replace(/[^0-9А-Яа-яA-Za-zЁёЇїІіЄє .,-]/g,'').trim();
-
-  // търси число с , или .
-  const m = text.match(/(\d+(?:[.,]\d+)?)/);
-  const amount = m ? Number(m[1].replace(',','.')) : NaN;
-
-  return { name, amount: Number.isFinite(amount)?amount:0 };
-}
-
-/* ===== Записване ===== */
-$('#btnSave').onclick = async ()=>{
-  try{
-    if(history.length===0) return toast('Няма написано съдържание.');
-    // снимка на листа
-    const dataURL = pad.toDataURL('image/png');
-
-    // OCR
-    await ensureTesseract();
-    const { data } = await tessWorker.recognize(dataURL);
-    const { name, amount } = parseNameAndAmount(data.text||'');
-
-    if(!name){ toast('Не успях да разчета име. Можеш да допишеш по-ясно и пак „Запази“.'); }
-
-    const rec = {
-      rid: crypto.randomUUID?.() || String(Date.now()),
-      ts: Date.now(),
-      name: name || '(неразчетено)',
-      nameLower: (name||'(неразчетено)').toLowerCase(),
-      amount: Number(amount)||0,
-      imageData: dataURL
-    };
-    db.add(rec);
-    lastName.set(rec.name);
-
-    // чистим листа
-    history=[]; draw();
-    toast(`Записано: ${rec.name} • ${fmt(rec.amount)} лв`);
-    // обнови панела ако е отворен
-    if(document.body.classList.contains('search-open')) renderNames();
-  }catch(err){
-    console.error(err);
-    toast('Грешка при запис.');
+/* OCR (Tesseract) – ще заредим bul.traineddata */
+const OCR = {
+  worker: null,
+  async ensure() {
+    if (this.worker) return this.worker;
+    this.worker = await Tesseract.createWorker({
+      // langPath е CDN за езиковите модели
+      langPath: "https://tessdata.projectnaptha.com/4.0.0",
+      gzip: false,
+    });
+    await this.worker.loadLanguage("bul");
+    await this.worker.initialize("bul");
+    return this.worker;
+  },
+  async textFromCanvas(canvas) {
+    await this.ensure();
+    const res = await this.worker.recognize(canvas);
+    return res.data.text || "";
   }
 };
 
-/* ===== Зачертаване: права линия върху име => изтриване ===== */
-/* 1) откриване на права дълга линия */
-function isStrike(s){
-  if(s.length<8) return false;
-  // линеарна регресия за наклон и остатъци
-  const xs=s.map(p=>p.x), ys=s.map(p=>p.y);
-  const n=s.length, sumX=xs.reduce((a,b)=>a+b), sumY=ys.reduce((a,b)=>a+b);
-  const sumXY=s.reduce((a,p)=>a+p.x*p.y,0), sumXX=xs.reduce((a,b)=>a+b*b,0);
-  const denom = n
+/* Помощни */
+const $ = sel => document.querySelector(sel);
+const toast = (m) => {
+  const host = $("#toast");
+  host.innerHTML = `<div class="msg">${m}</div>`;
+  setTimeout(()=> host.innerHTML = "", 1800);
+};
+
+const pad = $("#pad");
+const ctx = pad.getContext("2d", { willReadFrequently: true });
+let drawing = false;
+let isStrikeMode = false;
+let path = [];        // текуща траектория
+let undoStack = [];
+
+/* Рисуване само с писалка (по желание) */
+const penOnly = $("#penOnly");
+
+/* ========== Размери и фон ========== */
+function fitCanvas() {
+  const rect = pad.getBoundingClientRect();
+  pad.width  = Math.floor(rect.width  * devicePixelRatio);
+  pad.height = Math.floor(rect.height * devicePixelRatio);
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  drawRuledPaper();
+}
+function drawRuledPaper(){
+  // чистим към прозрачност и оставяме линиите от CSS (фонът е в контейнера).
+  ctx.clearRect(0,0,pad.width, pad.height);
+}
+window.addEventListener("resize", fitCanvas);
+
+/* ========== Инструменти ========== */
+function beginStroke(x,y){
+  drawing = true; path = [{x,y}];
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.strokeStyle = isStrikeMode ? "#ff6b6b" : PEN_COLOR;
+  ctx.lineWidth   = isStrikeMode ? STRIKE_WIDTH : PEN_WIDTH;
+  ctx.beginPath(); ctx.moveTo(x,y);
+}
+function moveStroke(x,y){
+  if(!drawing) return;
+  const p = path[path.length-1];
+  ctx.lineTo(x,y); ctx.stroke();
+  path.push({x,y});
+}
+function endStroke(){
+  if(!drawing) return;
+  drawing = false; ctx.closePath();
+  // Снимаме за Undo
+  undoStack.push(pad.toDataURL("image/png"));
+  if (undoStack.length>20) undoStack.shift();
+
+  // Ако е зачертаване – детекция на „една права линия“
+  if (isStrikeMode) tryDeleteByStrike(path);
+}
+
+/* Прост детектор за правa линия */
+function tryDeleteByStrike(pts){
+  const len = Math.hypot(pts[pts.length-1].x-pts[0].x, pts[pts.length-1].y-pts[0].y);
+  if (len < MIN_STRIKE_LEN) return;
+  const meanY = pts.reduce((a,p)=>a+p.y,0)/pts.length;
+  const variance = pts.reduce((a,p)=>a+(p.y-meanY)**2,0)/pts.length;
+  const stdev = Math.sqrt(variance);
+  if (stdev > STRAIGHT_TOL) return; // не е достатъчно „права“
+  // считаме, че е хоризонтална линия около y=meanY
+  deleteClosestNameNearY(meanY);
+}
+
+/* OCR + изтриване на най-близкия ред */
+async function deleteClosestNameNearY(y){
+  toast("Зачертаване… търся в записите");
+  // OCR върху текущото платно и добив на линии
+  const text = await OCR.textFromCanvas(pad);
+  const lines = text.split(/\r?\n/).map((s)=>s.trim()).filter(Boolean);
+
+  // Зареждаме всички записи и търсим последния записан, чиято „линия“ е най-близо до y.
+  // Тъй като нямаме координати от OCR в този лек вариант, ще изтрием последния запис със съвпадащо име, което се вижда в текста.
+  const all = await allEntries();
+  if (!all.length){ toast("Няма записи в базата."); return; }
+
+  // намираме име от последния ред, който прилича на „име - сума“
+  let candidateName = null;
+  for (let i=lines.length-1;i>=0;i--){
+    const L = lines[i];
+    // всичко преди първото число приемаме за име
+    const m = L.match(/^(.+?)\s*[-–—:]?\s*([0-9]+[0-9\.,]*)/);
+    if (m){
+      candidateName = m[1].trim();
+      break;
+    }
+  }
+  if (!candidateName){ toast("Не разпознах име на линията."); return; }
+
+  // търсим запис по име (последния по време)
+  const hit = all.filter(r => (r.name||"").toLowerCase().includes(candidateName.toLowerCase()))
+                 .sort((a,b)=>b.ts-a.ts)[0];
+  if (!hit){ toast(`Няма запис за „${candidateName}“.`); return; }
+
+  await db.removeItem(hit.id);
+  toast(`Премахнат: ${hit.name} (${fmt(hit.amount)} лв.)`);
+  // (по желание) може да презаредим резултатите в панела
+  if ($("#drawer").classList.contains("open")) runSearch();
+}
+
+/* ========== Събития / Pointer ========== */
+function clientPos(ev){
+  if (ev.touches && ev.touches[0]) return { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+  return { x: ev.clientX, y: ev.clientY };
+}
+function toCanvas(x,y){
+  const r = pad.getBoundingClientRect();
+  return { x: x - r.left, y: y - r.top };
+}
+function allow(ev){
+  // Ако е включено „Само писалка“, игнорираме мишка/пръст
+  if (penOnly.checked && ev.pointerType && ev.pointerType !== "pen") return false;
+  return true;
+}
+
+pad.addEventListener("pointerdown", (ev)=>{
+  if (!allow(ev)) return;
+  ev.preventDefault();
+  pad.setPointerCapture(ev.pointerId);
+  const {x,y} = toCanvas(ev.clientX, ev.clientY);
+  beginStroke(x,y);
+});
+pad.addEventListener("pointermove", (ev)=>{
+  if (!allow(ev)) return;
+  if (!drawing) return;
+  ev.preventDefault();
+  const {x,y} = toCanvas(ev.clientX, ev.clientY);
+  moveStroke(x,y);
+});
+const finish = ev => { if(drawing){ ev.preventDefault(); endStroke(); } };
+pad.addEventListener("pointerup", finish);
+pad.addEventListener("pointercancel", finish);
+pad.addEventListener("pointerleave", finish);
+
+/* Изключваме скрола докато рисуваме на iPad/таблет */
+["touchstart","touchmove"].forEach(t=>{
+  pad.addEventListener(t, e=> e.preventDefault(), { passive:false });
+});
+
+/* ========== Бутони ========== */
+$("#btn-new").onclick = () => {
+  drawRuledPaper();
+  toast("Нова страница");
+};
+$("#btn-undo").onclick = () => {
+  const last = undoStack.pop();
+  if (!last) return;
+  const img = new Image();
+  img.onload = () => { ctx.clearRect(0,0,pad.width,pad.height); ctx.drawImage(img,0,0, pad.width/devicePixelRatio, pad.height/devicePixelRatio); };
+  img.src = last;
+};
+$("#btn-clear").onclick = () => {
+  undoStack = [];
+  drawRuledPaper();
+};
+$("#btn-strike").onclick = (e) => {
+  isStrikeMode = !isStrikeMode;
+  e.currentTarget.classList.toggle("primary", isStrikeMode);
+  toast(isStrikeMode ? "Режим: Зачертаване" : "Режим: Писалка");
+};
+
+$("#btn-save").onclick = async () => {
+  // 1) сваляме PNG
+  const png = pad.toDataURL("image/png");
+  const fileName = `veresia-${new Date().toISOString().replace(/[:.]/g,"-")}.png`;
+  downloadDataURL(png, fileName);
+
+  // 2) OCR → извличане на име и сума и запис в „базата“
+  toast("Разчитам текста (OCR)...");
+  const text = await OCR.textFromCanvas(pad);
+  const tuples = parseNameAmountLines(text); // [{name, amount}]
+  if (!tuples.length){
+    toast("Запазено изображение. Няма намерени имена/суми.");
+    return;
+  }
+  const writes = tuples.map(t => saveEntry({ ...t, imgName:fileName }));
+  await Promise.all(writes);
+  toast(`Запазено: ${tuples.length} записа.`);
+};
+
+$("#btn-search").onclick = ()=>{
+  $("#drawer").classList.add("open");
+  $("#drawer").setAttribute("aria-hidden","false");
+};
+$("#drawer-close").onclick = ()=>{
+  $("#drawer").classList.remove("open");
+  $("#drawer").setAttribute("aria-hidden","true");
+};
+$("#q-run").onclick = runSearch;
+
+/* ========== Локална „база“ ========== */
+async function saveEntry({name, amount, imgName}){
+  const id = `e_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  const entry = { id, name: (name||"").trim(), amount: Number(amount)||0, imgName, ts: Date.now() };
+  await db.setItem(id, entry);
+  return entry;
+}
+async function allEntries(){
+  const arr = [];
+  await db.iterate((v)=> arr.push(v));
+  return arr.sort((a,b)=> a.ts - b.ts);
+}
+function fmt(n){ return (Number(n)||0).toFixed(2); }
+
+/* Търсене и резултати */
+async function runSearch(){
+  const q = ($("#q-name").value||"").trim().toLowerCase();
+  const list = await allEntries();
+  const hits = q ? list.filter(r => (r.name||"").toLowerCase().includes(q)) : list;
+  const total = hits.reduce((a,b)=> a + (Number(b.amount)||0), 0);
+
+  const host = $("#results");
+  if (!hits.length){
+    host.innerHTML = `<div class="result">Няма резултати.</div>`;
+    return;
+  }
+  host.innerHTML = hits.map(r=>`
+    <div class="result">
+      <h4>${escapeHtml(r.name)}</h4>
+      <div class="sum">Сума: <strong>${fmt(r.amount)} лв.</strong></div>
+      <div class="meta">Файл: ${escapeHtml(r.imgName||"-")} • ${new Date(r.ts).toLocaleString()}</div>
+    </div>
+  `).join("") + `
+    <div class="result"><h4>Обща сума</h4><div class="sum"><strong>${fmt(total)} лв.</strong></div></div>
+  `;
+}
+
+/* ========== Парсване на „Име – Сума“ от OCR ========== */
+function parseNameAmountLines(text){
+  // приемаме редове като „Иван - 12,50“ или „Мария 7.20“
+  const lines = (text||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const out = [];
+  for (const L of lines){
+    const m = L.match(/^(.+?)\s*(?:[-–—:]|\s)\s*([0-9]+[0-9\.,]*)$/);
+    if (!m) continue;
+    const name = m[1].replace(/[^\p{L}\s\-']/gu," ").replace(/\s{2,}/g," ").trim();
+    let amount = m[2].replace(",",".");
+    if (name && !isNaN(parseFloat(amount))){
+      out.push({ name, amount: parseFloat(amount) });
+    }
+  }
+  return out;
+}
+
+/* ========== Помощни ========== */
+function downloadDataURL(dataURL, filename){
+  const a = document.createElement("a");
+  a.href = dataURL; a.download = filename; document.body.appendChild(a);
+  a.click(); a.remove();
+}
+function escapeHtml(s){ return (s||"").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* Старт */
+window.addEventListener("load", ()=>{
+  fitCanvas();
+  toast("Готово за писане ✍️");
+});
