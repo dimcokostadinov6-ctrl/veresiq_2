@@ -2,87 +2,73 @@
 <html lang="bg">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
-  <title>Veresia — уеб приложение</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Veresia</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <h1>Veresia</h1>
-    <div class="topbar-right">
-      <div class="mode-badge" id="modeBadge" title="Режим на съхранение">Локален режим</div>
-    </div>
-  </header>
+  <!-- Платно на целия екран -->
+  <canvas id="pad" aria-label="Писалка"></canvas>
 
-  <main class="layout">
-    <section class="pad">
-      <div class="canvas-wrap">
-        <canvas id="pad" aria-label="Платно за писане"></canvas>
-        <div id="penOnly" class="pen-only">Пише само с писалка 🖊️</div>
-        <div id="errBox" class="err hidden"></div>
-        <div id="strikeHint" class="hint hidden">Готово за изтриване: начертай една хоризонтална линия</div>
+  <!-- Плаващи бутони -->
+  <div class="fab-col">
+    <button id="btnUndo" class="fab" title="Отмени"><span>↶</span></button>
+    <button id="btnClear" class="fab" title="Изчисти"><span>✕</span></button>
+    <button id="btnSaveOpen" class="fab primary" title="Запази"><span>💾</span></button>
+    <button id="btnSearchOpen" class="fab" title="Търсене"><span>🔎</span></button>
+  </div>
+
+  <!-- Лента за грешки/инфо -->
+  <div id="msg" class="msg hidden"></div>
+
+  <!-- Bottom-sheet: Запис -->
+  <div id="sheetSave" class="sheet hidden" role="dialog" aria-modal="true">
+    <div class="sheet-inner">
+      <header>
+        <h2>Запис</h2>
+        <button class="icon" id="sheetSaveClose" aria-label="Затвори">✕</button>
+      </header>
+
+      <div class="form">
+        <label>Име
+          <input id="inpName" type="text" placeholder="пример: Иван Петров" autocomplete="name" />
+        </label>
+        <label>Сума (лв)
+          <input id="inpAmount" type="number" step="0.01" inputmode="decimal" placeholder="пример: 12.50" />
+        </label>
       </div>
-      <div class="pad-actions">
-        <button id="btnClear" class="btn secondary">Нова страница</button>
-        <button id="btnUndo" class="btn secondary">Отмяна</button>
-        <button id="btnStrike" class="btn danger">Режим зачертаване</button>
+
+      <div class="actions">
         <button id="btnSave" class="btn primary">Запази</button>
       </div>
-    </section>
+    </div>
+  </div>
 
-    <aside class="side">
-      <div class="card">
-        <h2>Данни</h2>
-        <label>Име
-          <input id="inpName" placeholder="напр. Иван Петров" autocomplete="off"/>
-        </label>
-        <label>Сума
-          <input id="inpAmount" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" placeholder="напр. 12.50" />
-        </label>
-        <label class="chk">
-          <input id="chkUseFirebase" type="checkbox" />
-          Използвай Firebase (облак)
-        </label>
-        <details class="firebase">
-          <summary>Firebase настройки</summary>
-          <div class="grid2">
-            <input id="fbApiKey" placeholder="apiKey" />
-            <input id="fbAuthDomain" placeholder="authDomain" />
-            <input id="fbProjectId" placeholder="projectId" />
-            <input id="fbStorageBucket" placeholder="storageBucket" />
-            <input id="fbAppId" placeholder="appId" />
-          </div>
-        </details>
-      </div>
+  <!-- Изглед: Търсене/Преглед -->
+  <div id="viewSearch" class="view hidden">
+    <header class="bar">
+      <button id="btnSearchClose" class="icon" aria-label="Назад">←</button>
+      <input id="inpSearch" type="search" placeholder="Търси име…" />
+      <button id="btnExport" class="btn small">Експорт</button>
+    </header>
 
-      <div class="card">
-        <h2>Търсене</h2>
+    <main class="search-main">
+      <section id="namesSection">
+        <h3>Имена</h3>
+        <div id="namesList" class="list"></div>
+      </section>
+
+      <section id="recordsSection" class="hidden">
         <div class="row">
-          <input id="inpSearch" placeholder="Име за търсене…" autocomplete="off"/>
-          <button id="btnSearch" class="btn">Търси</button>
+          <button id="btnBackToNames" class="btn small">← Имена</button>
+          <div id="selectedName" class="title"></div>
+          <div id="selectedTotal" class="pill"></div>
         </div>
-        <div id="results" class="results"></div>
-        <div id="total" class="total">Обща сума: 0.00 лв</div>
-        <div class="note">Съвет: за изтриване — натисни върху запис за да го избереш, включи „Режим зачертаване“, после начертай една хоризонтална линия върху платното.</div>
-      </div>
+        <div id="recordsList" class="list"></div>
+      </section>
+    </main>
+  </div>
 
-      <div class="card">
-        <h2>Експорт/Импорт (локален режим)</h2>
-        <div class="row">
-          <button id="btnExport" class="btn">Експорт JSON</button>
-          <label class="file">
-            Импорт JSON
-            <input id="fileImport" type="file" accept="application/json" />
-          </label>
-        </div>
-      </div>
-    </aside>
-  </main>
-
-  <footer class="foot">
-    v0.3.0 — GitHub Pages • ако има проблем, отвори DevTools → Console и ми прати червените редове
-  </footer>
-
-  <script type="module" src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
