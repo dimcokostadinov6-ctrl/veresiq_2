@@ -1,165 +1,196 @@
+/* ==========================================================
+   Veresiq – canvas само за ПИСАЛКА + IndexedDB запис
+   Бутон „Запази“: 1) PNG на листа, 2) име+сума в БД, 3) нов лист
+   Нищо друго не пипаме като поведение.
+   ========================================================== */
+
 (() => {
-  const $ = s => document.querySelector(s);
-  const pad = $("#pad");
-  const ctx = pad.getContext("2d", { willReadFrequently:true });
+  const canvas = document.getElementById('pageCanvas');
+  const wrap = document.getElementById('canvasWrap');
+  const ctx = canvas.getContext('2d', { willReadFrequently: false });
+  const nameInput = document.getElementById('nameInput');
+  const amountInput = document.getElementById('amountInput');
+  const btnSave = document.getElementById('btnSave');
+  const hintNonPen = document.getElementById('hintNonPen');
+  const statusText = document.getElementById('statusText');
 
-  const PEN_COLOR = "#ffffff";
-  const PEN_WIDTH = 3.2;
-  const penOnly = $("#penOnly");
+  // ---------- Resize canvas to device pixels ----------
+  function fitCanvas() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const { clientWidth, clientHeight } = wrap;
+    canvas.width = Math.floor(clientWidth * dpr);
+    canvas.height = Math.floor(clientHeight * dpr);
+    canvas.style.width = clientWidth + 'px';
+    canvas.style.height = clientHeight + 'px';
+    ctx.scale(dpr, dpr);
+    // Няма да рисуваме фон – CSS има „линии“. Само настройваме четката.
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 2.5;
+  }
 
+  window.addEventListener('resize', () => {
+    // За да не губим вече нарисуваното при resize, правим snapshot и го връщаме
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const w = canvas.width, h = canvas.height;
+    const temp = document.createElement('canvas');
+    temp.width = w; temp.height = h;
+    temp.getContext('2d').drawImage(canvas, 0, 0);
+    fitCanvas();
+    ctx.drawImage(temp, 0, 0, w, h, 0, 0, canvas.clientWidth * dpr, canvas.clientHeight * dpr);
+  });
+
+  fitCanvas();
+
+  // ---------- Pen-only drawing ----------
   let drawing = false;
-  let path = [];
-  let undo = [];
+  let last = { x: 0, y: 0 };
 
-  function fitCanvas(){
-    const r = pad.getBoundingClientRect();
-    pad.width = Math.floor(r.width * devicePixelRatio);
-    pad.height = Math.floor(r.height * devicePixelRatio);
-    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-    clearCanvas(); // начертай празен лист с линии от фона (фонът е в CSS)
-  }
-  function clearCanvas(){
-    ctx.clearRect(0,0,pad.width,pad.height);
-  }
-  window.addEventListener("resize", fitCanvas);
-
-  function begin(x,y){
-    drawing = true; path = [{x,y}];
-    ctx.lineJoin="round"; ctx.lineCap="round";
-    ctx.strokeStyle=PEN_COLOR; ctx.lineWidth=PEN_WIDTH;
-    ctx.beginPath(); ctx.moveTo(x,y);
-  }
-  function move(x,y){
-    if(!drawing) return;
-    ctx.lineTo(x,y); ctx.stroke();
-    path.push({x,y});
-  }
-  function end(){
-    if(!drawing) return;
-    drawing=false; ctx.closePath();
-    // snapshot за undo
-    undo.push(pad.toDataURL("image/png"));
-    if (undo.length>25) undo.shift();
+  function toCanvasXY(e){
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left);
+    const y = (e.clientY - rect.top);
+    return { x, y };
   }
 
-  function client(ev){
-    if (ev.touches && ev.touches[0]) return {x:ev.touches[0].clientX,y:ev.touches[0].clientY};
-    return {x:ev.clientX,y:ev.clientY};
+  function startDraw(e){
+    if (e.pointerType !== 'pen') {
+      // скриваме/показваме подсказка за 2 сек.
+      hintNonPen.style.display = 'block';
+      clearTimeout(startDraw._t);
+      startDraw._t = setTimeout(()=> hintNonPen.style.display='none', 1800);
+      return;
+    }
+    drawing = true;
+    last = toCanvasXY(e);
   }
-  function toCanvas(x,y){
-    const r = pad.getBoundingClientRect();
-    return {x:x-r.left,y:y-r.top};
+
+  function moveDraw(e){
+    if (!drawing || e.pointerType !== 'pen') return;
+    const p = toCanvasXY(e);
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
   }
-  function allow(ev){
-    if (penOnly.checked && ev.pointerType && ev.pointerType!=="pen") return false;
-    return true;
+
+  function endDraw(){
+    drawing = false;
   }
 
-  // предотвратява скрола при рисуване
-  ["touchstart","touchmove"].forEach(t=>{
-    pad.addEventListener(t, e=>e.preventDefault(), {passive:false});
-  });
+  canvas.addEventListener('pointerdown', (e)=>{
+    e.preventDefault(); startDraw(e);
+  }, {passive:false});
 
-  pad.addEventListener("pointerdown", (ev)=>{
-    if(!allow(ev)) return;
-    ev.preventDefault();
-    pad.setPointerCapture(ev.pointerId);
-    const p = toCanvas(ev.clientX, ev.clientY);
-    begin(p.x,p.y);
-  });
-  pad.addEventListener("pointermove", (ev)=>{
-    if(!allow(ev) || !drawing) return;
-    ev.preventDefault();
-    const p = toCanvas(ev.clientX, ev.clientY);
-    move(p.x,p.y);
-  });
-  const finish = (ev)=>{ if(drawing){ ev.preventDefault(); end(); } };
-  pad.addEventListener("pointerup", finish);
-  pad.addEventListener("pointercancel", finish);
-  pad.addEventListener("pointerleave", finish);
+  canvas.addEventListener('pointermove', (e)=>{
+    e.preventDefault(); moveDraw(e);
+  }, {passive:false});
 
-  /* ---------- UI ---------- */
-  $("#btn-new").onclick = () => { undo=[]; clearCanvas(); toast("Нова страница"); };
-  $("#btn-clear").onclick = () => { undo=[]; clearCanvas(); };
-  $("#btn-undo").onclick = () => {
-    const last = undo.pop(); if (!last) return;
-    const img = new Image(); img.onload = () => {
-      ctx.clearRect(0,0,pad.width,pad.height);
-      ctx.drawImage(img, 0,0, pad.width/devicePixelRatio, pad.height/devicePixelRatio);
-    }; img.src = last;
-  };
+  window.addEventListener('pointerup', endDraw);
+  window.addEventListener('pointercancel', endDraw);
+  window.addEventListener('gesturestart', e=>e.preventDefault());
 
-  $("#btn-save").onclick = async () => {
-    // 1) сваляне на PNG
-    const png = pad.toDataURL("image/png");
-    const fileName = `veresia-${new Date().toISOString().replace(/[:.]/g,"-")}.png`;
-    downloadDataURL(png, fileName);
+  // ---------- IndexedDB (локална база) ----------
+  const DB_NAME = 'veresiyaDB';
+  const DB_VER = 1;
+  const STORE = 'entries';
 
-    // 2) ръчно въвеждане (както беше при първата сайт-версия)
-    const name = prompt("Въведи име:");
-    if (!name){ toast("Не е въведено име."); return; }
-    const amountStr = prompt("Сума (лв):", "0");
-    const amount = parseFloat((amountStr||"").replace(",","."));
-    if (Number.isNaN(amount)){ toast("Невалидна сума."); return; }
+  let dbPromise = null;
 
-    const rec = { id: `e_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-                  name: name.trim(), amount: +(amount.toFixed(2)),
-                  file: fileName, ts: Date.now() };
-    const all = loadDB(); all.push(rec); saveDB(all);
-    toast(`Записано: ${rec.name} — ${rec.amount.toFixed(2)} лв.`);
-  };
-
-  // Drawer
-  const drawer = $("#drawer");
-  $("#btn-search").onclick = ()=>{ drawer.classList.add("open"); drawer.setAttribute("aria-hidden","false"); renderResults(); };
-  $("#drawer-close").onclick = ()=>{ drawer.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); };
-  $("#q-run").onclick = renderResults;
-
-  function renderResults(){
-    const q = ($("#q-name").value||"").trim().toLowerCase();
-    const list = loadDB().filter(r => !q || (r.name||"").toLowerCase().includes(q));
-    const host = $("#results");
-    if (!list.length){ host.innerHTML = `<div class="result">Няма резултати.</div>`; return; }
-    const sum = list.reduce((a,b)=>a+(Number(b.amount)||0),0);
-    host.innerHTML = list.map(r=>`
-      <div class="result">
-        <h4>${escapeHtml(r.name)}</h4>
-        <div class="sum">Сума: <strong>${(Number(r.amount)||0).toFixed(2)} лв.</strong></div>
-        <div class="meta">Файл: ${escapeHtml(r.file||"-")} • ${new Date(r.ts).toLocaleString()}</div>
-        <div style="margin-top:6px;display:flex;gap:8px">
-          <button class="btn small" data-del="${r.id}">Изтрий</button>
-        </div>
-      </div>
-    `).join("") + `
-      <div class="result"><h4>Общо</h4><div class="sum"><strong>${sum.toFixed(2)} лв.</strong></div></div>
-    `;
-    host.querySelectorAll("[data-del]").forEach(b=>{
-      b.onclick = () => {
-        const id = b.getAttribute("data-del");
-        const all = loadDB().filter(x=>x.id!==id); saveDB(all);
-        renderResults(); toast("Изтрито.");
+  function openDB(){
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = (ev)=>{
+        const db = ev.target.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          const store = db.createObjectStore(STORE, { keyPath: 'id' });
+          store.createIndex('byName', 'name', { unique: false });
+          store.createIndex('byCreated', 'createdAt', { unique: false });
+        }
       };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+    return dbPromise;
+  }
+
+  async function putEntry(entry){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.oncomplete = ()=> resolve(true);
+      tx.onerror = ()=> reject(tx.error);
+      tx.objectStore(STORE).put(entry);
     });
   }
 
-  /* ---------- База (localStorage) ---------- */
-  const KEY = "veresia_entries_v1";
-  function loadDB(){ try{ return JSON.parse(localStorage.getItem(KEY)||"[]"); }catch{ return []; } }
-  function saveDB(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
-
-  /* ---------- Помощни ---------- */
-  function toast(msg){
-    const host = $("#toast");
-    host.innerHTML = `<div class="msg">${msg}</div>`;
-    setTimeout(()=>host.innerHTML="",1500);
+  // ---------- Utility: canvas -> Blob ----------
+  function canvasToBlob(type='image/png', quality=0.92){
+    return new Promise((resolve)=>{
+      canvas.toBlob((blob)=> resolve(blob), type, quality);
+    });
   }
-  function downloadDataURL(dataURL, filename){
-    const a = document.createElement("a");
-    a.href = dataURL; a.download = filename; document.body.appendChild(a);
-    a.click(); a.remove();
-  }
-  function escapeHtml(s){ return (s||"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-  // Старт
-  window.addEventListener("load", fitCanvas);
+  function setStatus(text){
+    statusText.textContent = text;
+  }
+
+  function clearSheet(){
+    // Чистим платното – без да чупим размери/скалиране
+    const { width, height } = canvas;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,width,height);
+    fitCanvas();
+  }
+
+  // ---------- SAVE: 1) PNG, 2) Име+Сума, 3) Нов лист ----------
+  btnSave.addEventListener('click', async ()=>{
+    try{
+      const name = (nameInput.value || '').trim();
+      const amtRaw = (amountInput.value || '').trim();
+      const amount = amtRaw === '' ? null : Number(amtRaw.replace(',', '.'));
+
+      if (!name) {
+        nameInput.focus();
+        setStatus('Въведи име преди запис.');
+        return;
+      }
+      if (amount === null || Number.isNaN(amount)) {
+        amountInput.focus();
+        setStatus('Въведи валидна сума (напр. 12.40).');
+        return;
+      }
+
+      setStatus('Записвам...');
+
+      // 1) PNG снимка на листа
+      const pngBlob = await canvasToBlob('image/png', 0.92);
+
+      // 2) Запис в IndexedDB
+      const entry = {
+        id: Date.now().toString(),
+        name,
+        amount: Number(amount.toFixed(2)),
+        createdAt: new Date().toISOString(),
+        imageBlob: pngBlob  // пазим изображението локално
+      };
+      await putEntry(entry);
+
+      // 3) Нов лист
+      clearSheet();
+      nameInput.value = '';
+      amountInput.value = '';
+      setStatus('Записано. Нов лист е готов.');
+    } catch (err){
+      console.error(err);
+      setStatus('Грешка при запис.');
+    }
+  });
+
+  // Първоначален статус
+  setStatus('Готово.');
 })();
