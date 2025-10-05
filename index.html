@@ -20,10 +20,12 @@
         <canvas id="pad" aria-label="Платно за писане"></canvas>
         <div id="penOnly" class="pen-only">Пише само с писалка 🖊️</div>
         <div id="errBox" class="err hidden"></div>
+        <div id="strikeHint" class="hint hidden">Готово за изтриване: начертай една хоризонтална линия</div>
       </div>
       <div class="pad-actions">
         <button id="btnClear" class="btn secondary">Нова страница</button>
         <button id="btnUndo" class="btn secondary">Отмяна</button>
+        <button id="btnStrike" class="btn danger">Режим зачертаване</button>
         <button id="btnSave" class="btn primary">Запази</button>
       </div>
     </section>
@@ -61,6 +63,7 @@
         </div>
         <div id="results" class="results"></div>
         <div id="total" class="total">Обща сума: 0.00 лв</div>
+        <div class="note">Съвет: за изтриване — натисни върху запис за да го избереш, включи „Режим зачертаване“, после начертай една хоризонтална линия върху платното.</div>
       </div>
 
       <div class="card">
@@ -77,7 +80,7 @@
   </main>
 
   <footer class="foot">
-    v0.2.0 — GitHub Pages • ако има проблем, отвори DevTools → Console и ми прати червените редове
+    v0.3.0 — GitHub Pages • ако има проблем, отвори DevTools → Console и ми прати червените редове
   </footer>
 
   <script type="module" src="app.js"></script>
