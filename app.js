@@ -1,110 +1,34 @@
 /* ==========================================================
-   Veresiya – ДОБАВЕНА логика към бутона „Запази“, без промяна на UI.
+   Veresiya — НЕ пипа интерфейса. Само добавя логика за „Запази“:
    1) PNG снимка на платното
    2) Запис в IndexedDB: { id, name, amount, createdAt, imageBlob }
-   3) Нов празен лист (чист canvas) + зануляване на полетата
-   ----------------------------------------------------------
-   Заб.: Ако имаш вече код за рисуване – оставяме го. Тук само
-   добавяме липсващата логика за „Запази“. Ако части съвпадат,
-   тази версия е самодостатъчна и няма нужда от други файлове.
+   3) Нов празен лист (reset на canvas) + нулира полетата
    ========================================================== */
 
-/* === СЕЛЕКТОРИ (ако ID-тата при теб са други, смени ги тук) === */
-const canvas     = document.getElementById('pageCanvas');
-const btnSave    = document.getElementById('btnSave');
-const nameInput  = document.getElementById('nameInput');
-const amountInput= document.getElementById('amountInput');
-const statusText = document.getElementById('statusText') || null;
-
-/* === ПРИЛОЖИМО: ако вече имаш рисуване – остави го си. ===
-   Ако НЯМАШ, следният блок осигурява елементарно рисуване САМО с писалка.
-   Ако вече имаш твой код за рисуване, можеш да изтриеш този блок. */
-(function ensureBasicDrawing(){
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d', { willReadFrequently:false });
-
-  // запазваме текущата скала; не променяме твоя layout. Само се грижим за DPI.
-  function fitCanvasToCSS(){
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const rect = canvas.getBoundingClientRect();
-    const needW = Math.max(1, Math.floor(rect.width * dpr));
-    const needH = Math.max(1, Math.floor(rect.height * dpr));
-    if (canvas.width !== needW || canvas.height !== needH){
-      // пазим снимка при resize
-      const temp = document.createElement('canvas');
-      temp.width = canvas.width; temp.height = canvas.height;
-      temp.getContext('2d').drawImage(canvas, 0, 0);
-      canvas.width = needW; canvas.height = needH;
-      ctx.setTransform(1,0,0,1,0,0);
-      ctx.drawImage(temp, 0, 0);
-    }
-    // стил на четката – минимален
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#111';
-    ctx.lineWidth = 2.5;
-    // връщаме логически координати към CSS пиксели
-    ctx.setTransform(dpr,0,0,dpr,0,0);
+/* ---------- Намираме елементите без да зависим от конкретни ID ---------- */
+function q(selList) {
+  for (const sel of selList.split(',').map(s => s.trim())) {
+    const el = document.querySelector(sel);
+    if (el) return el;
   }
-  fitCanvasToCSS();
-  window.addEventListener('resize', fitCanvasToCSS);
+  return null;
+}
+const canvas      = q('#pageCanvas, canvas');
+const btnSave     = q('#btnSave, #saveBtn, button#save, button.save, button[data-action="save"], button[aria-label="Запази"], button[title="Запази"]');
+const nameInput   = q('#nameInput, #name, input[name="name"], input[data-field="name"]');
+const amountInput = q('#amountInput, #amount, input[name="amount"], input[data-field="amount"]');
+const statusText  = q('#statusText, .status-text');
 
-  let drawing = false;
-  let lastX = 0, lastY = 0;
-
-  function toCanvasXY(e){
-    const r = canvas.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  }
-
-  function down(e){
-    if (e.pointerType !== 'pen') return; // само писалка
-    e.preventDefault();
-    const p = toCanvasXY(e);
-    drawing = true; lastX = p.x; lastY = p.y;
-  }
-  function move(e){
-    if (!drawing || e.pointerType !== 'pen') return;
-    e.preventDefault();
-    const p = toCanvasXY(e);
-    const ctx2 = canvas.getContext('2d');
-    ctx2.beginPath();
-    ctx2.moveTo(lastX, lastY);
-    ctx2.lineTo(p.x, p.y);
-    ctx2.stroke();
-    lastX = p.x; lastY = p.y;
-  }
-  function up(){ drawing = false; }
-
-  canvas.addEventListener('pointerdown', down, {passive:false});
-  window.addEventListener('pointermove', move, {passive:false});
-  window.addEventListener('pointerup', up);
-  window.addEventListener('pointercancel', up);
-})();
-
-/* === ПОМОЩНИ ФУНКЦИИ === */
+/* ---------- Помощни ---------- */
 function setStatus(msg){
   if (statusText) statusText.textContent = msg;
 }
 
-function clearCanvas(){
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  // чистим без да чупим размера/скалата
-  const w = canvas.width, h = canvas.height;
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,w,h);
-  // възстановяваме скалата спрямо DPR (както в ensureBasicDrawing)
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-}
-
 function canvasToBlob(type='image/png', quality=0.92){
   return new Promise(resolve=>{
-    // в някои стари webview toBlob може да липсва → fallback
-    if (canvas.toBlob) {
+    if (canvas && canvas.toBlob) {
       canvas.toBlob(b => resolve(b), type, quality);
-    } else {
+    } else if (canvas) {
       const dataURL = canvas.toDataURL(type, quality);
       const byteString = atob(dataURL.split(',')[1]);
       const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
@@ -112,11 +36,25 @@ function canvasToBlob(type='image/png', quality=0.92){
       const ia = new Uint8Array(ab);
       for (let i=0;i<byteString.length;i++) ia[i]=byteString.charCodeAt(i);
       resolve(new Blob([ab], {type: mimeString}));
+    } else {
+      resolve(null);
     }
   });
 }
 
-/* === IndexedDB setup (лек, без външни библиотеки) === */
+function clearCanvas(){
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  // изчистваме, пазим текущия размер/скалиране
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,w,h);
+  // възстановяваме DPR скейла (ако е ползван)
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+/* ---------- IndexedDB (минимална обвивка) ---------- */
 const DB_NAME = 'veresiyaDB';
 const DB_VER  = 1;
 const STORE   = 'entries';
@@ -150,19 +88,19 @@ async function putEntry(entry){
   });
 }
 
-/* === ЛОГИКА ЗА „ЗАПАЗИ“ === */
+/* ---------- Основна логика за „Запази“ ---------- */
 async function onSave(){
   try{
-    const name = (nameInput && nameInput.value || '').trim();
-    const amtStr = (amountInput && amountInput.value || '').trim().replace(',', '.');
+    const nameVal = (nameInput && nameInput.value || '').trim();
+    const amtRaw  = (amountInput && amountInput.value || '').trim().replace(',', '.');
 
-    if (!name){
+    if (!nameVal){
       setStatus('Въведи име.');
       if (nameInput) nameInput.focus();
       return;
     }
-    const amount = Number(amtStr);
-    if (!amtStr || Number.isNaN(amount)){
+    const amount = Number(amtRaw);
+    if (!amtRaw || Number.isNaN(amount)){
       setStatus('Въведи валидна сума (напр. 12.40).');
       if (amountInput) amountInput.focus();
       return;
@@ -170,36 +108,36 @@ async function onSave(){
 
     setStatus('Записвам...');
 
-    // 1) PNG снимка на текущия лист
+    // 1) PNG снимка
     const pngBlob = await canvasToBlob('image/png', 0.92);
 
     // 2) Запис в IndexedDB
     const entry = {
-      id: Date.now().toString(),          // прост уникален ключ
-      name,
-      amount: Number(amount.toFixed(2)),  // 2 знака след запетая
+      id: Date.now().toString(),
+      name: nameVal,
+      amount: Number(amount.toFixed(2)),
       createdAt: new Date().toISOString(),
-      imageBlob: pngBlob                  // съхраняваме снимката локално
+      imageBlob: pngBlob || null
     };
     await putEntry(entry);
 
-    // 3) Нов лист + нулиране на полетата
+    // 3) Нов лист
     clearCanvas();
     if (nameInput) nameInput.value = '';
     if (amountInput) amountInput.value = '';
 
     setStatus('Записано. Нов лист е готов.');
-  } catch(err){
+  } catch (err){
     console.error(err);
     setStatus('Грешка при запис.');
   }
 }
 
-/* === ВРЪЗКА С БУТОНА „Запази“ === */
-if (btnSave){
+/* ---------- Закачане към бутона ---------- */
+if (btnSave) {
   btnSave.addEventListener('click', onSave);
 } else {
-  console.warn('[veresiya] Не е намерен #btnSave – няма да закача логика за запис.');
+  console.warn('[veresiya] Не е намерен бутон „Запази“.');
 }
 
-/* === КРАЙ === */
+/* КРАЙ — интерфейсът остава 1:1 както е в твоите HTML/CSS */
