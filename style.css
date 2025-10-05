@@ -1,86 +1,59 @@
 :root{
-  --bg: #0b1220;
-  --ink: #f1f5ff;
-  --muted: #9ab0d1;
-  --accent: #5fa8ff;
-  --danger: #ff6b6b;
-  --card: #0f172a;
-  --border: #1e293b;
+  --bg: #0b1220; --ink: #f1f5ff; --muted:#a9b9d7;
+  --card:#0f172a; --border:#1f2a44; --accent:#2e6af1; --danger:#ff6b6b;
 }
-*{ box-sizing: border-box; }
-html,body{ height:100%; }
-body{
-  margin:0; background:var(--bg); color:#e6eefc; font:16px/1.4 system-ui,Segoe UI,Roboto,Arial;
-  touch-action: none; /* по подразбиране – ще го пускаме на отделни елементи */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:#eaf1ff;font:16px/1.45 system-ui,Segoe UI,Roboto,Arial}
+.topbar{
+  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
+  padding:10px 12px;border-bottom:1px solid var(--border);background:#0e1630;
 }
-
-/* Платно на целия екран */
-#pad{
-  position:fixed; inset:0;
-  width:100vw; height:100vh;
-  display:block;
-  background: radial-gradient(1200px 800px at 70% 10%, #0f1b34 0%, #0b1220 55%, #0a1020 100%);
-  touch-action: none; /* без скрол/зуум върху платното */
-  cursor: crosshair;
+.brand{font-weight:700;letter-spacing:.3px}
+.actions{margin-left:auto;display:flex;gap:8px}
+.btn{
+  background:#101a34;color:#dbe6ff;border:1px solid var(--border);
+  padding:8px 12px;border-radius:10px;cursor:pointer
 }
-
-/* Плаващи бутони */
-.fab-col{
-  position: fixed; right: env(safe-area-inset-right,16px); bottom: calc(env(safe-area-inset-bottom,16px) + 12px);
-  display:flex; flex-direction:column; gap:12px; z-index:10;
-}
-.fab{
-  width:56px; height:56px; border-radius:18px; border:1px solid var(--border);
-  background:#111a2e; color:#dfe9ff; box-shadow: 0 8px 24px rgba(0,0,0,.35);
-  display:grid; place-items:center; font-size:22px; cursor:pointer;
-}
-.fab.primary{ background: linear-gradient(180deg,#2b6fdd,#2253a8); border-color:#1f3c7a; }
-.fab:active{ transform: translateY(1px); }
-
-/* Съобщения */
+.btn.primary{background:linear-gradient(180deg,#2b6fdd,#1e4cae);border-color:#1d3778}
+.btn.small{padding:6px 10px;font-size:14px}
+.pill{background:#0a1326;border:1px solid var(--border);padding:4px 8px;border-radius:999px}
 .msg{
-  position: fixed; left:50%; transform:translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom,8px) + 84px);
-  background:#0f172a; border:1px solid var(--border); padding:10px 14px; border-radius:10px;
-  color:#cfe0ff; z-index:10; max-width:90vw;
+  position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:#0f172a;border:1px solid var(--border);
+  color:#cfe0ff;padding:8px 12px;border-radius:10px;z-index:50
 }
-.hidden{ display:none !important; }
+.hidden{display:none!important}
 
-/* Bottom sheet */
-.sheet{ position:fixed; inset:0; background: rgba(0,0,0,.45); z-index:20; display:grid; place-items:end center; }
-.sheet-inner{
-  width:100%; max-width:640px; background:var(--card); border-radius:16px 16px 0 0;
-  border-top:1px solid var(--border); padding:12px 14px 16px;
+.layout{display:flex;min-height:calc(100vh - 54px)}
+.canvas-wrap{position:relative;flex:1;min-width:0}
+#pad{
+  position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;
+  background: radial-gradient(1200px 800px at 70% 10%, #101c3a 0%, #0b1220 60%, #0a1020 100%);
+  touch-action:none; /* без скрол над платното */
 }
-.sheet header{ display:flex; align-items:center; gap:12px; }
-.sheet h2{ margin:6px 0; font-size:18px; font-weight:600; }
-.icon{ background:none; border:1px solid var(--border); color:#dfe9ff; border-radius:10px; padding:8px 10px; cursor:pointer; }
-.form{ display:grid; gap:10px; margin:12px 0; }
-label{ display:grid; gap:6px; font-size:14px; color:var(--muted); }
-input{
-  background:#0a1326; color:#e6eefc; border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:16px;
-  touch-action: manipulation;
+.hint{
+  position:absolute;left:10px;bottom:10px;color:var(--muted);font-size:12px;opacity:.8;
+  background:rgba(0,0,0,.25);padding:4px 8px;border-radius:8px;border:1px solid var(--border)
 }
-.actions{ display:flex; justify-content:flex-end; gap:8px; }
-.btn{ background:#0a1326; border:1px solid var(--border); color:#e6eefc; border-radius:10px; padding:10px 14px; cursor:pointer; }
-.btn.small{ padding:6px 10px; font-size:14px; }
-.btn.primary{ background: linear-gradient(180deg,#2b6fdd,#2253a8); border-color:#1f3c7a; }
 
-/* View: search */
-.view{ position:fixed; inset:0; background:var(--bg); z-index:30; display:flex; flex-direction:column; }
-.bar{
-  display:flex; gap:8px; align-items:center; padding:10px; border-bottom:1px solid var(--border);
-  background:#0f172a;
+/* Десен панел – показва се/скрива се с клас .open на body */
+.panel{
+  width:360px;max-width:40vw;border-left:1px solid var(--border);background:var(--card);
+  transform:translateX(100%);transition:transform .25s ease;overflow:auto
 }
-.bar input{ flex:1; }
-.search-main{ padding:12px; overflow:auto; height:100%; }
-.list{ display:grid; gap:10px; }
+body.search-open .panel{transform:none}
+.panel-head{padding:10px;border-bottom:1px solid var(--border)}
+.panel input{
+  width:100%;background:#0a1326;color:#e6eefc;border:1px solid var(--border);border-radius:10px;padding:10px 12px
+}
+.list{display:grid;gap:10px;padding:12px}
 .item{
-  background:#0f172a; border:1px solid var(--border); border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:10px;
+  background:#0f172a;border:1px solid var(--border);border-radius:12px;padding:10px 12px;
+  display:flex;align-items:center;gap:10px
 }
-.item .grow{ flex:1; }
-.tag{ background:#0a1326; border:1px solid var(--border); padding:4px 8px; border-radius:999px; color:#9bd2ff; font-size:12px; }
-.row{ display:flex; align-items:center; gap:10px; margin:8px 0 12px; }
-.title{ font-weight:600; }
-.pill{ margin-left:auto; background:#0a1326; border:1px solid var(--border); padding:4px 8px; border-radius:999px; color:#bfe5ff; }
-.del{ color:#ffd1d1; border-color:#5b2323; }
+.item .grow{flex:1}
+.item .title{font-weight:600}
+.item .muted{color:var(--muted);font-size:12px}
+.backrow{display:flex;gap:8px;align-items:center;padding:12px 12px 0}
+#recordsList .item img{width:70px;height:42px;border-radius:8px;border:1px solid var(--border);object-fit:cover}
+.del{border-color:#592828;color:#ffd0d0}
