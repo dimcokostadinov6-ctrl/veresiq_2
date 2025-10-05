@@ -2,52 +2,61 @@
 <html lang="bg">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Veresia</title>
-  <link rel="stylesheet" href="styles.css" />
-  <!-- Tesseract.js за OCR (български) -->
-  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <link rel="stylesheet" href="styles.css"/>
+
+  <!-- localForage (IndexedDB) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+  <!-- Tesseract.js с български език -->
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Veresia</div>
-    <div class="actions">
-      <button id="btnUndo" class="btn" title="Отмени">↶</button>
-      <button id="btnClear" class="btn" title="Изчисти">✕</button>
-      <button id="btnSave" class="btn primary" title="Запази">💾 Запази</button>
-      <button id="btnSearchToggle" class="btn" title="Търсене">🔎 Търсене</button>
+  <header class="toolbar">
+    <div class="left">
+      <span class="brand">Veresia</span>
+    </div>
+    <div class="center">
+      <button id="btn-new" class="btn">Нова страница</button>
+      <button id="btn-undo" class="btn">Назад</button>
+      <button id="btn-clear" class="btn">Изчисти</button>
+      <button id="btn-save" class="btn primary">Запази</button>
+      <button id="btn-strike" class="btn">Зачертаване</button>
+      <span class="sep"></span>
+      <label class="pen-only-toggle">
+        <input id="penOnly" type="checkbox" checked/>
+        Само писалка
+      </label>
+    </div>
+    <div class="right">
+      <button id="btn-search" class="btn outline">Търсене</button>
     </div>
   </header>
 
-  <div class="layout">
-    <!-- Лява част: по-голямо платно -->
+  <main id="main">
+    <!-- Платно с „тетрадка“ (сини линии) -->
     <div class="canvas-wrap">
       <canvas id="pad" aria-label="Писане"></canvas>
-      <div id="hint" class="hint">Пиши с писалка/пръст • Едно дълго зачеркване върху име = изтриване</div>
     </div>
+  </main>
 
-    <!-- Дясно: панел „Търсене/преглед“ (скрит, отваря се с бутона) -->
-    <aside id="searchPanel" class="panel">
-      <div class="panel-head">
-        <input id="inpSearch" type="search" placeholder="Търси име…" />
-      </div>
+  <!-- Плъзгащ се панел за търсене -->
+  <aside id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <strong>Търсене</strong>
+      <button id="drawer-close" class="btn small">✕</button>
+    </div>
+    <div class="drawer-body">
+      <label>Име</label>
+      <input id="q-name" type="text" placeholder="например: Иван"/>
+      <button id="q-run" class="btn primary block">Потърси</button>
+      <div id="results"></div>
+    </div>
+  </aside>
 
-      <div id="namesList" class="list"></div>
-
-      <div id="personView" class="hidden">
-        <div class="backrow">
-          <button id="btnBack" class="btn small">← Имена</button>
-          <div class="grow"></div>
-          <div id="pvTotal" class="pill"></div>
-        </div>
-        <h3 id="pvName"></h3>
-        <div id="recordsList" class="list"></div>
-      </div>
-    </aside>
-  </div>
-
-  <div id="msg" class="msg hidden"></div>
-
-  <script src="app.js"></script>
+  <!-- Тост съобщения -->
+  <div id="toast"></div>
 </body>
 </html>
