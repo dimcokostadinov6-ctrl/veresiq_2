@@ -3,12 +3,18 @@ const USE_FIREBASE_DEFAULT = false;
 
 // ===== Помощни =====
 const $ = (s,p=document)=>p.querySelector(s);
+const $$ = (s,p=document)=>[...p.querySelectorAll(s)];
 const fmt = (n)=> (Number(String(n).replace(',', '.'))||0).toFixed(2);
 const uuid = ()=> (crypto.randomUUID ? crypto.randomUUID() :
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
     const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8); return v.toString(16);
   })
 );
+
+// помним последно име (за авто-попълване)
+const LAST_NAME_KEY = 'veresia:lastName';
+const getLastName = ()=> localStorage.getItem(LAST_NAME_KEY)||'';
+const setLastName = v => localStorage.setItem(LAST_NAME_KEY, (v||'').trim());
 
 const els = {
   canvas: $('#pad'),
@@ -45,7 +51,6 @@ function showErr(msg){
   clearTimeout(showErr._t);
   showErr._t = setTimeout(()=> els.errBox.classList.add('hidden'), 6000);
 }
-
 function info(msg){
   els.errBox.textContent = "ℹ️ " + String(msg);
   els.errBox.classList.remove('hidden');
@@ -53,7 +58,7 @@ function info(msg){
   info._t = setTimeout(()=> els.errBox.classList.add('hidden'), 4000);
 }
 
-// ===== Canvas / рисуване (оптимизирано) =====
+// ===== Canvas / рисуване (оптимизирано, без скрол) =====
 let ctx, dpr = 1;
 let drawing = false, strikeMode = false;
 let activePointerId = null, stroke = [], history = [], needsRedraw = false;
@@ -86,7 +91,6 @@ function drawAll(){
   for(const s of history) drawStroke(g,s);
   if(stroke.length>1) drawStroke(g,stroke);
 }
-
 function drawStroke(g,s){
   if(s.length<2) return;
   g.beginPath();
@@ -105,7 +109,6 @@ function drawStroke(g,s){
 function widthForPressure(p=0.5){ const base=1.8*dpr, add=2.4*(p||0.5)*dpr; return base+add; }
 function lerp(a,b,t){ return a+(b-a)*t; }
 
-// блокиране на скрол и жестове върху платното
 ['touchstart','touchmove','wheel'].forEach(ev=>{
   els.canvas.addEventListener(ev, e=> e.preventDefault(), {passive:false});
 });
@@ -143,10 +146,17 @@ els.canvas.addEventListener('pointermove', (e)=>{
   },{passive:false});
 });
 
+function isHorizontalStrike(s){
+  if (!s || s.length<2) return false;
+  const xs = s.map(p=>p.x), ys=s.map(p=>p.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs);
+  const minY=Math.min(...ys), maxY=Math.max(...ys);
+  const w=maxX-minX, h=maxY-minY;
+  const W=els.canvas.getBoundingClientRect().width;
+  return w >= W*0.45 && h <= 10; // >=45% ширина и почти права по Y
+}
 function finishStroke(){
-  // анализ за зачертаване
   if (strikeMode && isHorizontalStrike(stroke)){
-    // ако имаме избран резултат → изтриваме
     if (selectedRid){
       deleteByRid(selectedRid).then(()=> info('Записът е изтрит.'));
     }else{
@@ -160,19 +170,6 @@ function finishStroke(){
   activePointerId=null;
   document.body.classList.remove('no-scroll');
   requestRedraw();
-}
-
-// детектор: една дълга хоризонтална линия
-function isHorizontalStrike(s){
-  if (!s || s.length<2) return false;
-  const xs = s.map(p=>p.x), ys=s.map(p=>p.y);
-  const minX=Math.min(...xs), maxX=Math.max(...xs);
-  const minY=Math.min(...ys), maxY=Math.max(...ys);
-  const w=maxX-minX, h=maxY-minY;
-  const c=els.canvas; const W=c.getBoundingClientRect().width;
-  const longEnough = w >= W*0.45;   // поне ~45% от ширината
-  const flatEnough = h <= 10;       // почти права по Y (10px)
-  return longEnough && flatEnough;
 }
 
 // ===== Локален storage =====
@@ -217,11 +214,11 @@ function updateModeBadge(){
 async function ensureFirebase(){
   if (FB.app) return;
   const cfg={
-    apiKey: els.fb.apiKey.value.trim(),
-    authDomain: els.fb.authDomain.value.trim(),
-    projectId: els.fb.projectId.value.trim(),
-    storageBucket: els.fb.storageBucket.value.trim(),
-    appId: els.fb.appId.value.trim(),
+    apiKey: ($('#fbApiKey')?.value||'').trim(),
+    authDomain: ($('#fbAuthDomain')?.value||'').trim(),
+    projectId: ($('#fbProjectId')?.value||'').trim(),
+    storageBucket: ($('#fbStorageBucket')?.value||'').trim(),
+    appId: ($('#fbAppId')?.value||'').trim(),
   };
   if (!cfg.apiKey || !cfg.projectId || !cfg.storageBucket){
     showErr('Firebase не е конфигуриран (apiKey/projectId/storageBucket). Оставаме в локален режим.');
@@ -241,15 +238,42 @@ async function ensureFirebase(){
   }catch(err){ showErr('Firebase init error: '+(err?.message||err)); FB.enabled=false; updateModeBadge(); }
 }
 
+// ===== Последно име: попълване и поддръжка =====
+(function initLastName(){
+  const ln = getLastName();
+  if (ln && !els.inpName.value) els.inpName.value = ln;
+})();
+els.inpName.addEventListener('input', ()=> setLastName(els.inpName.value));
+els.inpSearch.addEventListener('input', e=>{
+  const v=(e.target.value||'').trim();
+  if (v) setLastName(v);
+});
+
 // ===== Запази =====
 els.btnSave.onclick = async ()=>{
   try{
     els.errBox.classList.add('hidden');
 
-    const name = els.inpName.value.trim();
+    let name = els.inpName.value.trim();
+    if (!name) {
+      // опитай с последно име
+      const ln = getLastName();
+      if (ln) { name = ln; els.inpName.value = ln; }
+    }
+    if (!name) {
+      showErr('Въведи име.');
+      els.inpName.scrollIntoView({behavior:'smooth', block:'center'});
+      els.inpName.focus();
+      return;
+    }
+
     const amount = Number(String(els.inpAmount.value).replace(',', '.'));
-    if (!name) return showErr('Въведи име.');
-    if (!Number.isFinite(amount)) return showErr('Въведи валидна сума (например 12.50).');
+    if (!Number.isFinite(amount)) {
+      showErr('Въведи валидна сума (например 12.50).');
+      els.inpAmount.scrollIntoView({behavior:'smooth', block:'center'});
+      els.inpAmount.focus();
+      return;
+    }
     if (history.length === 0) return showErr('Няма написано съдържание на листа.');
 
     const dataURL = els.canvas.toDataURL('image/png');
@@ -273,8 +297,8 @@ els.btnSave.onclick = async ()=>{
       alert('✅ Записано локално.');
     }
 
-    // изчистване и бързо опресняване
-    els.inpName.value = '';
+    // изчистване и опресняване
+    setLastName(name); // запази последното валидно име
     els.inpAmount.value = '';
     history=[]; stroke=[]; requestRedraw();
 
@@ -294,6 +318,10 @@ async function doSearch(){
 
     const qname = els.inpSearch.value.trim().toLowerCase();
     if (!qname) return;
+
+    // запомни търсеното като „последно име“
+    setLastName(qname);
+    if (!els.inpName.value) els.inpName.value = qname;
 
     let rows=[];
     if (FB.enabled){
@@ -320,7 +348,7 @@ function renderResults(rows){
     const div=document.createElement('div');
     div.className='result';
     div.dataset.rid = r.rid || r.id || `${r.name}-${r.ts}`;
-    if (r.__docId) div.dataset.docId = r.__docId; // firebase doc id (за бързо триене)
+    if (r.__docId) div.dataset.docId = r.__docId;
     div.innerHTML=`
       <img class="thumb" src="${url}" alt="снимка"/>
       <div>
@@ -333,6 +361,13 @@ function renderResults(rows){
       $$('.result').forEach(x=>x.classList.remove('selected'));
       div.classList.add('selected');
       selectedRid = div.dataset.rid;
+
+      // вземи името от записа и го попълни/запомни
+      const nm = (r.name||'').trim();
+      if (nm){
+        els.inpName.value = nm;
+        setLastName(nm);
+      }
       info('Избран запис. Включи „Режим зачертаване“ и начертай една хоризонтална линия.');
     };
     els.results.appendChild(div);
@@ -340,47 +375,30 @@ function renderResults(rows){
   els.total.textContent = `Обща сума: ${fmt(sum)} лв`;
 }
 
-// ===== Зачертаване (режим) =====
+// ===== Режим зачертаване =====
 els.btnStrike.onclick = ()=>{
   strikeMode = !strikeMode;
   els.btnStrike.classList.toggle('active', strikeMode);
   els.hint.classList.toggle('hidden', !strikeMode);
-  if (strikeMode && !selectedRid) {
-    info('Избери запис (щракни върху него) и начертай една хоризонтална линия върху платното.');
-  }
+  if (strikeMode && !selectedRid) info('Избери запис и начертай хоризонтална линия върху платното.');
 };
 
-// изтриване по rid
 async function deleteByRid(rid){
   if (!rid) return;
   if (FB.enabled){
     await ensureFirebase(); if (!FB.app) return;
-    // опит 1: ако имаме docId от рендеринга — трием директно (по-бързо)
-    const selected = [...$$('.result')].find(x=> x.classList.contains('selected'));
-    const docId = selected?.dataset.docId;
-
     const { collection, query, where, getDocs, deleteDoc } = FB.api;
-    if (docId){
-      // имаме документ ID
-      const doc = (await getDocs(query(collection(FB.fs,'records'), where('rid','==',rid)))).docs[0];
-      if (doc) await deleteDoc(doc.ref);
-    } else {
-      // fallback: намираме по rid
-      const snap = await getDocs(query(collection(FB.fs,'records'), where('rid','==',rid)));
-      const batch = snap.docs;
-      if (batch.length===0){ showErr('Не намерих записа в облака.'); return; }
-      for (const d of batch) await FB.api.deleteDoc(d.ref);
-    }
-    // обнови списъка
+    const snap = await getDocs(query(collection(FB.fs,'records'), where('rid','==',rid)));
+    if (snap.empty) { showErr('Не намерих записа в облака.'); return; }
+    for (const d of snap.docs) await deleteDoc(d.ref);
     doSearch().catch(()=>{});
   } else {
     await localDeleteByRid(rid);
-    // обнови списъка
     doSearch().catch(()=>{});
   }
 }
 
-// ===== Експорт/Импорт (локален режим) =====
+// ===== Експорт/Импорт (локален) =====
 els.btnExport.onclick = async ()=>{
   try{
     const rows = await localAll();
@@ -400,3 +418,7 @@ els.fileImport.onchange = async (e)=>{
     alert('Импортът е завършен.');
   }catch(err){ showErr('Невалиден JSON при импорт: '+(err?.message||err)); }
 };
+
+// ===== Бутоните над платното =====
+els.btnClear.onclick = ()=>{ history=[]; stroke=[]; requestRedraw(); };
+els.btnUndo.onclick = ()=>{ history.pop(); requestRedraw(); };
