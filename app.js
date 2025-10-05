@@ -1,34 +1,79 @@
 /* ==========================================================
-   Veresiya — НЕ пипа интерфейса. Само добавя логика за „Запази“:
-   1) PNG снимка на платното
-   2) Запис в IndexedDB: { id, name, amount, createdAt, imageBlob }
-   3) Нов празен лист (reset на canvas) + нулира полетата
+   Veresiya – „тетрадка“: черно платно със сини линии, писане само с писалка.
+   „Запази“: 1) PNG снимка, 2) запис {name, amount, createdAt, imageBlob} в IndexedDB,
+             3) нов празен лист.
+   Нищо извън това НЕ се променя.
    ========================================================== */
+const canvas      = document.getElementById('pageCanvas');
+const ctx         = canvas.getContext('2d', { willReadFrequently:false });
+const nameInput   = document.getElementById('nameInput');
+const amountInput = document.getElementById('amountInput');
+const btnSave     = document.getElementById('btnSave');
+const statusText  = document.getElementById('statusText');
 
-/* ---------- Намираме елементите без да зависим от конкретни ID ---------- */
-function q(selList) {
-  for (const sel of selList.split(',').map(s => s.trim())) {
-    const el = document.querySelector(sel);
-    if (el) return el;
+/* ---------- Размер/скала без да чупим изгледа ---------- */
+function fitCanvas() {
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = canvas.getBoundingClientRect();
+  const targetW = Math.max(1, Math.floor(rect.width * dpr));
+  const targetH = Math.max(1, Math.floor(rect.height * dpr));
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    const temp = document.createElement('canvas');
+    temp.width = canvas.width; temp.height = canvas.height;
+    temp.getContext('2d').drawImage(canvas, 0, 0);
+    canvas.width = targetW; canvas.height = targetH;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.drawImage(temp, 0, 0);
   }
-  return null;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.lineCap   = 'round';
+  ctx.lineJoin  = 'round';
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#f5f5f5';
+  ctx.lineWidth = 2.6;
 }
-const canvas      = q('#pageCanvas, canvas');
-const btnSave     = q('#btnSave, #saveBtn, button#save, button.save, button[data-action="save"], button[aria-label="Запази"], button[title="Запази"]');
-const nameInput   = q('#nameInput, #name, input[name="name"], input[data-field="name"]');
-const amountInput = q('#amountInput, #amount, input[name="amount"], input[data-field="amount"]');
-const statusText  = q('#statusText, .status-text');
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+/* ---------- Рисуване: САМО с писалка ---------- */
+let drawing = false, lastX = 0, lastY = 0;
+
+function toXY(e){
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function down(e){
+  if (e.pointerType !== 'pen') return;   // само pen
+  e.preventDefault();
+  const p = toXY(e); drawing = true; lastX = p.x; lastY = p.y;
+}
+function move(e){
+  if (!drawing || e.pointerType !== 'pen') return;
+  e.preventDefault();
+  const p = toXY(e);
+  ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke();
+  lastX = p.x; lastY = p.y;
+}
+function up(){ drawing = false; }
+
+canvas.addEventListener('pointerdown', down, {passive:false});
+window.addEventListener('pointermove',  move, {passive:false});
+window.addEventListener('pointerup',    up);
+window.addEventListener('pointercancel',up);
 
 /* ---------- Помощни ---------- */
-function setStatus(msg){
-  if (statusText) statusText.textContent = msg;
+function setStatus(t){ if (statusText) statusText.textContent = t; }
+
+function clearSheet(){
+  const w = canvas.width, h = canvas.height;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,w,h);
+  fitCanvas(); // връща правилната скала и четка
 }
 
 function canvasToBlob(type='image/png', quality=0.92){
   return new Promise(resolve=>{
-    if (canvas && canvas.toBlob) {
-      canvas.toBlob(b => resolve(b), type, quality);
-    } else if (canvas) {
+    if (canvas.toBlob) canvas.toBlob(b => resolve(b), type, quality);
+    else {
       const dataURL = canvas.toDataURL(type, quality);
       const byteString = atob(dataURL.split(',')[1]);
       const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
@@ -36,25 +81,11 @@ function canvasToBlob(type='image/png', quality=0.92){
       const ia = new Uint8Array(ab);
       for (let i=0;i<byteString.length;i++) ia[i]=byteString.charCodeAt(i);
       resolve(new Blob([ab], {type: mimeString}));
-    } else {
-      resolve(null);
     }
   });
 }
 
-function clearCanvas(){
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  // изчистваме, пазим текущия размер/скалиране
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,w,h);
-  // възстановяваме DPR скейла (ако е ползван)
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-}
-
-/* ---------- IndexedDB (минимална обвивка) ---------- */
+/* ---------- IndexedDB ---------- */
 const DB_NAME = 'veresiyaDB';
 const DB_VER  = 1;
 const STORE   = 'entries';
@@ -67,77 +98,58 @@ function openDB(){
     req.onupgradeneeded = (ev)=>{
       const db = ev.target.result;
       if (!db.objectStoreNames.contains(STORE)){
-        const store = db.createObjectStore(STORE, { keyPath: 'id' });
-        store.createIndex('byName', 'name', { unique:false });
-        store.createIndex('byCreated', 'createdAt', { unique:false });
+        const st = db.createObjectStore(STORE, { keyPath:'id' });
+        st.createIndex('byName','name',{unique:false});
+        st.createIndex('byCreated','createdAt',{unique:false});
       }
     };
-    req.onsuccess = ()=> resolve(req.result);
-    req.onerror   = ()=> reject(req.error);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
   });
   return _dbPromise;
 }
-
 async function putEntry(entry){
   const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.oncomplete = ()=> resolve(true);
-    tx.onerror    = ()=> reject(tx.error);
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(STORE,'readwrite');
+    tx.oncomplete = ()=>resolve(true);
+    tx.onerror    = ()=>reject(tx.error);
     tx.objectStore(STORE).put(entry);
   });
 }
 
-/* ---------- Основна логика за „Запази“ ---------- */
+/* ---------- „Запази“: PNG + БД + нов лист ---------- */
 async function onSave(){
   try{
-    const nameVal = (nameInput && nameInput.value || '').trim();
-    const amtRaw  = (amountInput && amountInput.value || '').trim().replace(',', '.');
+    const name   = (nameInput?.value || '').trim();
+    const amtStr = (amountInput?.value || '').trim().replace(',', '.');
 
-    if (!nameVal){
-      setStatus('Въведи име.');
-      if (nameInput) nameInput.focus();
-      return;
-    }
-    const amount = Number(amtRaw);
-    if (!amtRaw || Number.isNaN(amount)){
-      setStatus('Въведи валидна сума (напр. 12.40).');
-      if (amountInput) amountInput.focus();
-      return;
-    }
+    if (!name){ setStatus('Въведи име.'); nameInput?.focus(); return; }
+    const amount = Number(amtStr);
+    if (!amtStr || Number.isNaN(amount)){ setStatus('Въведи валидна сума (напр. 12.40).'); amountInput?.focus(); return; }
 
     setStatus('Записвам...');
 
-    // 1) PNG снимка
-    const pngBlob = await canvasToBlob('image/png', 0.92);
+    const pngBlob = await canvasToBlob('image/png', .92);
 
-    // 2) Запис в IndexedDB
     const entry = {
       id: Date.now().toString(),
-      name: nameVal,
+      name,
       amount: Number(amount.toFixed(2)),
       createdAt: new Date().toISOString(),
-      imageBlob: pngBlob || null
+      imageBlob: pngBlob
     };
     await putEntry(entry);
 
-    // 3) Нов лист
-    clearCanvas();
+    clearSheet();
     if (nameInput) nameInput.value = '';
     if (amountInput) amountInput.value = '';
-
     setStatus('Записано. Нов лист е готов.');
-  } catch (err){
+  } catch(err){
     console.error(err);
     setStatus('Грешка при запис.');
   }
 }
+btnSave?.addEventListener('click', onSave);
 
-/* ---------- Закачане към бутона ---------- */
-if (btnSave) {
-  btnSave.addEventListener('click', onSave);
-} else {
-  console.warn('[veresiya] Не е намерен бутон „Запази“.');
-}
-
-/* КРАЙ — интерфейсът остава 1:1 както е в твоите HTML/CSS */
+setStatus('Готово.');
