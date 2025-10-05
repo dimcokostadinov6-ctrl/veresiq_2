@@ -1,44 +1,30 @@
 <!doctype html>
 <html lang="bg">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Veresia</title>
-  <link rel="stylesheet" href="styles.css"/>
-
-  <!-- localForage (IndexedDB) -->
-  <script defer src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
-  <!-- Tesseract.js с български език -->
-  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
-
-  <script defer src="app.js"></script>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="toolbar">
-    <div class="left">
-      <span class="brand">Veresia</span>
-    </div>
-    <div class="center">
+    <div class="brand">Veresia</div>
+    <div class="actions">
       <button id="btn-new" class="btn">Нова страница</button>
       <button id="btn-undo" class="btn">Назад</button>
       <button id="btn-clear" class="btn">Изчисти</button>
       <button id="btn-save" class="btn primary">Запази</button>
-      <button id="btn-strike" class="btn">Зачертаване</button>
-      <span class="sep"></span>
-      <label class="pen-only-toggle">
-        <input id="penOnly" type="checkbox" checked/>
+      <label class="toggle">
+        <input id="penOnly" type="checkbox" checked>
         Само писалка
       </label>
-    </div>
-    <div class="right">
       <button id="btn-search" class="btn outline">Търсене</button>
     </div>
   </header>
 
-  <main id="main">
-    <!-- Платно с „тетрадка“ (сини линии) -->
+  <main class="workspace">
     <div class="canvas-wrap">
-      <canvas id="pad" aria-label="Писане"></canvas>
+      <canvas id="pad" aria-label="Платно за писане"></canvas>
     </div>
   </main>
 
@@ -49,14 +35,15 @@
       <button id="drawer-close" class="btn small">✕</button>
     </div>
     <div class="drawer-body">
-      <label>Име</label>
-      <input id="q-name" type="text" placeholder="например: Иван"/>
+      <input id="q-name" type="text" placeholder="Име…">
       <button id="q-run" class="btn primary block">Потърси</button>
       <div id="results"></div>
     </div>
   </aside>
 
-  <!-- Тост съобщения -->
+  <!-- Тост -->
   <div id="toast"></div>
+
+  <script src="app.js"></script>
 </body>
 </html>
