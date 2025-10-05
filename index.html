@@ -1,212 +1,448 @@
 <!doctype html>
 <html lang="bg">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Veresia</title>
 <style>
-:root{
-  --bg:#0d1117; --ink:#fff; --muted:#9aa4b2;
-  --line:#1f6feb55; --card:#161b22;
-  --b:#2c3646; --b2:#334155; --acc:#238636;
-}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:#e6edf3;font-family:system-ui,Segoe UI,Roboto,Arial}
+  :root {
+    --bg: #0f1115;
+    --line: rgba(80,120,200,0.25);
+    --ink: #fff;
+    --ui: #1b2230;
+    --ui2: #2a3447;
+    --accent: #2e7dff;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --err: #ef4444;
+  }
+  html,body { height:100%; margin:0; background:var(--bg); color:#dbe5ff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; }
+  .app {
+    height:100%;
+    display:grid;
+    grid-template-rows:auto 1fr;
+  }
 
-.toolbar{
-  position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;
-  padding:10px 12px;border-bottom:1px solid #202938;background:#0d1117cc;backdrop-filter:blur(6px)
-}
-.brand{font-weight:700}
-.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.toggle{display:flex;gap:6px;align-items:center;color:var(--muted)}
-.btn{border:1px solid var(--b2);background:#0f141b;color:#e6edf3;padding:8px 12px;border-radius:10px;cursor:pointer}
-.btn:hover{border-color:#3a475c}
-.btn.primary{background:var(--acc);border-color:#2ea043}
-.btn.small{padding:4px 8px}
+  /* Toolbar */
+  .bar {
+    display:flex; gap:.5rem; align-items:center;
+    padding: .5rem .75rem;
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    border-bottom:1px solid rgba(255,255,255,.08);
+    position:sticky; top:0; z-index:5;
+  }
+  .bar h1 { font-size:1rem; margin:0 .5rem 0 0; opacity:.9; }
+  .spacer { flex:1; }
 
-.workspace{height:calc(100vh - 56px);display:flex}
-.canvas-wrap{
-  position:relative;flex:1;overflow:hidden;border-left:1px solid #18202b;
-  background:
-   repeating-linear-gradient(to bottom, transparent 0, transparent 22px, var(--line) 22px, var(--line) 24px),
-   #0d1117;
-}
-#pad{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+  button, .btn {
+    appearance:none; border:1px solid rgba(255,255,255,.12); background:var(--ui);
+    color:#e9efff; padding:.5rem .75rem; border-radius:.6rem; cursor:pointer;
+    transition:.15s ease; font-weight:600;
+  }
+  button:hover { background:var(--ui2); transform: translateY(-1px); }
+  .save { background:linear-gradient(180deg, #1f62ff, #1247c7); border-color:#2e7dff; }
+  .save:hover { filter:brightness(1.08); }
+  .search { background:transparent; }
+  .pill { padding:.35rem .6rem; font-size:.85rem; border-radius:999px; border:1px dashed rgba(255,255,255,.18); }
 
-/* Плъзгащ се панел за търсене */
-#drawer{
-  position:fixed;right:-360px;top:0;width:360px;height:100%;
-  background:var(--card);border-left:1px solid #263142;box-shadow:-10px 0 18px rgba(0,0,0,.25);
-  transition:right .22s ease;display:flex;flex-direction:column;z-index:20
-}
-#drawer.open{right:0}
-.drawer-head{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #263142}
-.drawer-body{padding:12px;display:flex;flex-direction:column;gap:10px}
-.drawer-body input{padding:10px 12px;border:1px solid #2a3443;border-radius:10px;background:#0f141b;color:#e6edf3}
-#results{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto}
-.result{background:#0f141b;border:1px solid #263142;border-radius:12px;padding:10px}
-.result h4{margin:0 0 6px}
-.result .sum{color:#c7d2fe}
+  /* Layout */
+  .stage {
+    position:relative; height:100%; display:grid; grid-template-columns: 1fr minmax(0, 0);
+    overflow:hidden;
+  }
+  .stage.with-panel { grid-template-columns: 1fr min(360px, 35vw); }
+  /* Canvas region */
+  .sheet {
+    position:relative; height:100%; overflow:hidden;
+    touch-action:none; /* отключваме скрол/зуум при рисуване */
+  }
+  canvas { display:block; width:100%; height:100%; touch-action:none; }
 
-/* Тост */
-#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:50}
-#toast .msg{background:#111827;border:1px solid #2a3443;color:#e6edf3;padding:10px 14px;border-radius:12px;box-shadow:0 10px 20px rgba(0,0,0,.35)}
+  /* ruled paper background with CSS */
+  .ruled {
+    position:absolute; inset:0; pointer-events:none;
+    background:
+      linear-gradient(180deg, transparent 48px, var(--line) 48px, var(--line) 49px, transparent 49px) 0 0/100% 49px,
+      linear-gradient(180deg, transparent 0, transparent 49px);
+    opacity:.9;
+  }
+
+  /* Side panel */
+  .panel {
+    height:100%; border-left:1px solid rgba(255,255,255,.08);
+    background:#0c111b; padding: .75rem; overflow:auto;
+  }
+  .panel h2 { margin:.25rem 0 .75rem; font-size:1rem; }
+  .row { display:flex; gap:.5rem; margin:.25rem 0 .5rem; }
+  input[type="text"]{
+    width:100%; background:#0b1220; color:#e9efff; border:1px solid rgba(255,255,255,.14);
+    padding:.55rem .6rem; border-radius:.55rem; outline:none;
+  }
+  .list { display:flex; flex-direction:column; gap:.35rem; }
+  .card {
+    background:#0b1220; border:1px solid rgba(255,255,255,.1); border-radius:.6rem; padding:.6rem .7rem;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .muted { opacity:.7; font-size:.9rem; }
+  .kill { background:#1a0c10; border-color:#7a1c1c; color:#ffd6d6; }
+
+  /* Toast */
+  .toast {
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:16px; background:#0b1220; border:1px solid rgba(255,255,255,.18);
+    padding:.6rem .8rem; border-radius:.6rem; z-index:50; box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
 </style>
 </head>
 <body>
-  <header class="toolbar">
-    <div class="brand">Veresia</div>
-    <div class="actions">
-      <button id="btn-new" class="btn">Нова страница</button>
-      <button id="btn-undo" class="btn">Назад</button>
-      <button id="btn-clear" class="btn">Изчисти</button>
-      <button id="btn-save" class="btn primary">Запази</button>
-      <label class="toggle">
-        <input id="penOnly" type="checkbox" checked>
-        Само писалка
-      </label>
-      <button id="btn-search" class="btn">Търсене</button>
-    </div>
-  </header>
+<div class="app">
+  <div class="bar">
+    <h1>Veresia</h1>
+    <span class="pill">Писалка ✅</span>
+    <button id="clearBtn">Изчисти</button>
+    <button id="saveBtn" class="save">Запази</button>
+    <div class="spacer"></div>
+    <button id="searchBtn" class="search">Търсене</button>
+  </div>
 
-  <main class="workspace">
-    <div class="canvas-wrap">
-      <canvas id="pad" aria-label="Платно за писане"></canvas>
+  <div class="stage" id="stage">
+    <div class="sheet" id="sheet">
+      <canvas id="pad"></canvas>
+      <div class="ruled"></div>
     </div>
-  </main>
+    <aside class="panel" id="panel" hidden>
+      <h2>Търсене</h2>
+      <div class="row">
+        <input id="q" type="text" placeholder="Име…" autocomplete="off" />
+        <button id="closePanel">✕</button>
+      </div>
+      <div id="suggestions" class="list" style="margin-bottom:.5rem;"></div>
+      <div id="results" class="list"></div>
+    </aside>
+  </div>
+</div>
 
-  <aside id="drawer" aria-hidden="true">
-    <div class="drawer-head">
-      <strong>Търсене</strong>
-      <button id="drawer-close" class="btn small">✕</button>
-    </div>
-    <div class="drawer-body">
-      <input id="q-name" type="text" placeholder="Име…">
-      <button id="q-run" class="btn primary">Потърси</button>
-      <div id="results"></div>
-    </div>
-  </aside>
+<div id="toast" class="toast" style="display:none"></div>
 
-  <div id="toast"></div>
+<!-- Tesseract.js (OCR) -->
+<script src="https://unpkg.com/tesseract.js@5.0.5/dist/tesseract.min.js"></script>
+<!-- idb-keyval (IndexedDB helper) -->
+<script src="https://unpkg.com/idb-keyval@6/dist/idb-keyval.iife.js"></script>
 
 <script>
 (() => {
-  const $ = s => document.querySelector(s);
-  const pad = $("#pad");
-  const ctx = pad.getContext("2d", { willReadFrequently:true });
+  // ============ Canvas setup ============
+  const canvas = document.getElementById('pad');
+  const sheet  = document.getElementById('sheet');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let dpr = Math.max(1, window.devicePixelRatio || 1);
 
-  const PEN_COLOR = "#ffffff";
-  const PEN_WIDTH = 3.2;
-  const penOnly = $("#penOnly");
-
-  let drawing = false;
-  let undo = [];
-
-  function fitCanvas(){
-    const r = pad.getBoundingClientRect();
-    pad.width = Math.floor(r.width * devicePixelRatio);
-    pad.height = Math.floor(r.height * devicePixelRatio);
-    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-    clearCanvas();
+  function fitCanvas() {
+    const { clientWidth:w, clientHeight:h } = sheet;
+    canvas.width  = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.scale(dpr, dpr);
+    redraw();
   }
-  function clearCanvas(){ ctx.clearRect(0,0,pad.width,pad.height); }
+  window.addEventListener('resize', fitCanvas, { passive:true });
 
-  window.addEventListener("resize", fitCanvas);
+  // ink config
+  const pen = { color: getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#fff', size: 3.6 };
+  const strokes = [];
+  let cur = null;
 
-  function begin(x,y){
-    drawing = true;
-    ctx.lineJoin="round"; ctx.lineCap="round";
-    ctx.strokeStyle=PEN_COLOR; ctx.lineWidth=PEN_WIDTH;
-    ctx.beginPath(); ctx.moveTo(x,y);
+  function redraw() {
+    ctx.clearRect(0,0,canvas.width/dpr,canvas.height/dpr);
+    ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle=pen.color; ctx.lineWidth=pen.size;
+    for (const s of strokes) drawStroke(s);
+    if (cur) drawStroke(cur);
   }
-  function move(x,y){ if(!drawing) return; ctx.lineTo(x,y); ctx.stroke(); }
-  function end(){
-    if(!drawing) return; drawing=false; ctx.closePath();
-    undo.push(pad.toDataURL("image/png")); if (undo.length>25) undo.shift();
+  function drawStroke(s) {
+    if (s.points.length<2) return;
+    ctx.beginPath();
+    ctx.moveTo(s.points[0].x, s.points[0].y);
+    for (let i=1;i<s.points.length;i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+    ctx.stroke();
   }
-  function toCanvas(x,y){ const r = pad.getBoundingClientRect(); return {x:x-r.left,y:y-r.top}; }
-  function allow(ev){ return !(penOnly.checked && ev.pointerType && ev.pointerType!=="pen"); }
 
-  // блокиране на скрол докато рисуваш
-  ["touchstart","touchmove"].forEach(t=>pad.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+  // prevent scroll while drawing
+  sheet.addEventListener('touchmove', e => e.preventDefault(), { passive:false });
 
-  pad.addEventListener("pointerdown",(ev)=>{
-    if(!allow(ev)) return; ev.preventDefault(); pad.setPointerCapture(ev.pointerId);
-    const p = toCanvas(ev.clientX,ev.clientY); begin(p.x,p.y);
+  function pointerPos(e){
+    const r = canvas.getBoundingClientRect();
+    const x = (e.touches? e.touches[0].clientX : e.clientX) - r.left;
+    const y = (e.touches? e.touches[0].clientY : e.clientY) - r.top;
+    return { x, y, t: performance.now() };
+  }
+  function start(e){ cur = { points:[pointerPos(e)], t0: performance.now() }; redraw(); }
+  function move(e){ if(!cur) return; cur.points.push(pointerPos(e)); redraw(); }
+  function end(e){ if(!cur) return; strokes.push(cur); detectStrikeThrough(cur); cur=null; redraw(); }
+
+  canvas.addEventListener('pointerdown', e=>{ canvas.setPointerCapture(e.pointerId); start(e); });
+  canvas.addEventListener('pointermove', move);
+  canvas.addEventListener('pointerup',   end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('touchstart', start);
+  canvas.addEventListener('touchmove',  move);
+  canvas.addEventListener('touchend',   end);
+
+  // ============ UI ============
+
+  const clearBtn  = document.getElementById('clearBtn');
+  const saveBtn   = document.getElementById('saveBtn');
+  const searchBtn = document.getElementById('searchBtn');
+  const stage     = document.getElementById('stage');
+  const panel     = document.getElementById('panel');
+  const closePanel= document.getElementById('closePanel');
+  const qEl       = document.getElementById('q');
+  const sugEl     = document.getElementById('suggestions');
+  const resEl     = document.getElementById('results');
+
+  clearBtn.addEventListener('click', () => { strokes.length=0; redraw(); toast('Листът е изчистен.'); });
+
+  searchBtn.addEventListener('click', () => { openPanel(true); renderIndex(); });
+  closePanel.addEventListener('click', () => openPanel(false));
+
+  function openPanel(show){
+    if (show) {
+      panel.hidden = false;
+      stage.classList.add('with-panel');
+    } else {
+      stage.classList.remove('with-panel');
+      panel.hidden = true;
+    }
+  }
+
+  // ============ IndexedDB ============
+
+  const store = idbKeyval; // keys: 'people' -> Map(name -> total)
+  async function getAll(){
+    return (await store.get('people')) || {};
+  }
+  async function putAll(data){
+    await store.set('people', data);
+  }
+  async function addAmount(name, amount){
+    name = normName(name);
+    if (!name || !Number.isFinite(amount)) return;
+    const db = await getAll();
+    db[name] = (db[name]||0) + amount;
+    await putAll(db);
+  }
+  async function deleteName(name){
+    const db = await getAll();
+    if (db[name] != null) { delete db[name]; await putAll(db); }
+  }
+
+  function normName(s){
+    if (!s) return '';
+    return s.replace(/\s+/g,' ').trim();
+  }
+
+  // ============ OCR helpers ============
+
+  // preload worker lazily
+  let tWorker = null;
+  async function getWorker(){
+    if (!tWorker){
+      tWorker = await Tesseract.createWorker('bul+eng', 1, {
+        // logger: m => console.log(m), // uncomment for progress
+      });
+    }
+    return tWorker;
+  }
+
+  function canvasToBlob() {
+    return new Promise(res => canvas.toBlob(b => res(b), 'image/png', 0.95));
+  }
+
+  async function downloadImage(filename='veresia-note.png'){
+    const blob = await canvasToBlob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+  }
+
+  function parseNameAmounts(text){
+    // Намираме редове с „Име - 12.34“ или „Име — 12,34“ и т.н.
+    // Работи и при „Иван 12.50“, „Лена – 3лв“, „Петър - 7,20“…
+    const out = [];
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    for (let line of lines){
+      // нормализиране на тирета
+      line = line.replace(/[–—−]/g,'-');
+      // търсим число
+      const m = line.match(/([А-Яа-яA-Za-z.\s]+?)[\s:-]+([-+]?\d+[.,]?\d*)/);
+      if (m){
+        const name = normName(m[1]);
+        const amt  = parseFloat(String(m[2]).replace(',', '.'));
+        if (name && Number.isFinite(amt)) out.push({name, amount: amt});
+      }
+    }
+    return out;
+  }
+
+  async function ocrFullImageAndSave(){
+    const worker = await getWorker();
+    const blob = await canvasToBlob();
+    const img = URL.createObjectURL(blob);
+    const { data } = await worker.recognize(img);
+    URL.revokeObjectURL(img);
+
+    const pairs = parseNameAmounts(data.text || '');
+    let saved=0;
+    for (const p of pairs){ await addAmount(p.name, p.amount); saved++; }
+    return { saved, pairs, raw: data.text };
+  }
+
+  // Strike-through detection -> delete
+  async function detectStrikeThrough(stroke){
+    // 1) Проверка за почти права линия
+    const pts = stroke.points;
+    if (pts.length < 6) return;
+    const len = Math.hypot(pts.at(-1).x - pts[0].x, pts.at(-1).y - pts[0].y);
+    if (len < 120) return;
+
+    // стандартно отклонение в y (или ъгъл)
+    const ys = pts.map(p=>p.y);
+    const avg = ys.reduce((a,b)=>a+b,0)/ys.length;
+    const variance = ys.reduce((a,b)=>a+(b-avg)*(b-avg),0)/ys.length;
+    const sd = Math.sqrt(variance);
+    if (sd > 7) return; // твърде зиг-заг -> не е права
+
+    // 2) OCR върху правоъгълник около линията
+    const minx = Math.min(...pts.map(p=>p.x));
+    const maxx = Math.max(...pts.map(p=>p.x));
+    const miny = Math.min(...pts.map(p=>p.y));
+    const maxy = Math.max(...pts.map(p=>p.y));
+    const pad = 22;
+    const x = Math.max(0, minx - pad), y = Math.max(0, miny - pad);
+    const w = Math.min(canvas.width/dpr - x, (maxx - minx) + pad*2);
+    const h = Math.min(canvas.height/dpr - y, (maxy - miny) + pad*2);
+
+    const sub = ctx.getImageData(x, y, w, h);
+    // Създаваме временен canvas за OCR
+    const tmp = document.createElement('canvas');
+    tmp.width = Math.floor(w * dpr); tmp.height = Math.floor(h * dpr);
+    const tctx = tmp.getContext('2d');
+    tctx.scale(dpr,dpr);
+    tctx.putImageData(sub, 0, 0);
+
+    const worker = await getWorker();
+    const { data } = await worker.recognize(tmp);
+    const lines = parseNameAmounts(data.text || '').map(e=>e.name);
+
+    if (!lines.length) return;
+    // търсим най-вероятното име в DB (по вместване/Levenshtein леко)
+    const db = await getAll();
+    const names = Object.keys(db);
+    let hit = null, scoreBest = 0;
+    for (const cand of lines){
+      for (const have of names){
+        const s = similarity(cand, have);
+        if (s > scoreBest) { scoreBest = s; hit = have; }
+      }
+    }
+    if (hit && scoreBest >= 0.72){
+      await deleteName(hit);
+      toast(`Изтрит: ${hit}`, 'warn');
+      // визуална линия остава; това е жестът
+      renderIndex(); // обнови панела ако е отворен
+    }
+  }
+
+  // проста сходност
+  function similarity(a,b){
+    a = a.toLowerCase(); b = b.toLowerCase();
+    const aa = a.replace(/\s+/g,'');
+    const bb = b.replace(/\s+/g,'');
+    const min = Math.min(aa.length, bb.length);
+    let same=0; for (let i=0;i<min;i++) if (aa[i]===bb[i]) same++;
+    return (2*same)/(aa.length+bb.length);
+  }
+
+  // ============ Search panel (with suggestions) ============
+
+  async function renderIndex(filter=''){
+    const db = await getAll();
+    const entries = Object.entries(db).sort((a,b)=>a[0].localeCompare(b[0],'bg'));
+    // suggestions
+    const q = filter.trim().toLowerCase();
+    sugEl.innerHTML = '';
+    if (q){
+      const matches = entries.filter(([name]) => name.toLowerCase().includes(q)).slice(0,6);
+      for (const [name] of matches){
+        const btn = document.createElement('button');
+        btn.className='btn'; btn.style.width='100%'; btn.textContent=name;
+        btn.onclick = () => { qEl.value = name; renderIndex(name); };
+        sugEl.appendChild(btn);
+      }
+    }
+    // results
+    resEl.innerHTML='';
+    let shown=0;
+    for (const [name, amount] of entries){
+      if (q && !name.toLowerCase().includes(q)) continue;
+      const card = document.createElement('div'); card.className='card';
+      const left = document.createElement('div');
+      left.innerHTML = `<strong>${name}</strong><div class="muted">${amount.toFixed(2)} лв</div>`;
+      const del = document.createElement('button'); del.className='kill'; del.textContent='Изтрий';
+      del.onclick = async ()=>{ await deleteName(name); renderIndex(qEl.value); toast(`Изтрит: ${name}`, 'warn'); };
+      card.append(left, del);
+      resEl.appendChild(card);
+      shown++;
+    }
+    if (!shown){
+      const d = document.createElement('div'); d.className='muted'; d.textContent = 'Няма резултати.';
+      resEl.appendChild(d);
+    }
+  }
+  qEl.addEventListener('input', () => renderIndex(qEl.value));
+
+  // ============ Save flow (3-в-1) ============
+
+  saveBtn.addEventListener('click', async () => {
+    try{
+      saveBtn.disabled = true; saveBtn.textContent = 'Запис…';
+      // 1) снимка
+      await downloadImage('veresia-note.png');
+      // 2) OCR + запис в DB
+      const { saved } = await ocrFullImageAndSave();
+      // 3) нов лист
+      strokes.length=0; redraw();
+      toast(`Готово. Записани имена: ${saved}.`, 'ok');
+      if (!panel.hidden) renderIndex(qEl.value);
+    } catch(err){
+      console.error(err);
+      toast('Грешка при запис.', 'err');
+    } finally {
+      saveBtn.disabled = false; saveBtn.textContent = 'Запази';
+    }
   });
-  pad.addEventListener("pointermove",(ev)=>{
-    if(!allow(ev) || !drawing) return; ev.preventDefault();
-    const p = toCanvas(ev.clientX,ev.clientY); move(p.x,p.y);
-  });
-  const finish = ev => { if(drawing){ ev.preventDefault(); end(); } };
-  pad.addEventListener("pointerup",finish);
-  pad.addEventListener("pointercancel",finish);
-  pad.addEventListener("pointerleave",finish);
 
-  // Бутони
-  $("#btn-new").onclick = ()=>{ undo=[]; clearCanvas(); toast("Нова страница"); };
-  $("#btn-clear").onclick = ()=>{ undo=[]; clearCanvas(); };
-  $("#btn-undo").onclick = ()=>{
-    const last = undo.pop(); if (!last) return;
-    const img = new Image(); img.onload=()=>{
-      ctx.clearRect(0,0,pad.width,pad.height);
-      ctx.drawImage(img,0,0,pad.width/devicePixelRatio,pad.height/devicePixelRatio);
-    }; img.src = last;
-  };
-  $("#btn-save").onclick = ()=>{
-    const png = pad.toDataURL("image/png");
-    const fileName = `veresia-${new Date().toISOString().replace(/[:.]/g,"-")}.png`;
-    download(png,fileName);
-    const name = prompt("Въведи име:");
-    if(!name){ toast("Не е въведено име."); return; }
-    const amountStr = prompt("Сума (лв):","0");
-    const amount = parseFloat((amountStr||"").replace(",","."));
-    if(Number.isNaN(amount)){ toast("Невалидна сума."); return; }
-    const rec = { id:`e_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, name:name.trim(), amount:+amount.toFixed(2), file:fileName, ts:Date.now() };
-    const all = loadDB(); all.push(rec); saveDB(all);
-    toast(`Записано: ${rec.name} — ${rec.amount.toFixed(2)} лв.`);
-  };
-
-  // Drawer Търсене
-  const drawer = $("#drawer");
-  $("#btn-search").onclick = ()=>{ drawer.classList.add("open"); drawer.setAttribute("aria-hidden","false"); renderResults(); };
-  $("#drawer-close").onclick = ()=>{ drawer.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); };
-  $("#q-run").onclick = renderResults;
-
-  function renderResults(){
-    const q = ($("#q-name").value||"").trim().toLowerCase();
-    const list = loadDB().filter(r => !q || (r.name||"").toLowerCase().includes(q));
-    const host = $("#results");
-    if(!list.length){ host.innerHTML = `<div class="result">Няма резултати.</div>`; return; }
-    const sum = list.reduce((a,b)=>a+(Number(b.amount)||0),0);
-    host.innerHTML = list.map(r=>`
-      <div class="result">
-        <h4>${escapeHtml(r.name)}</h4>
-        <div class="sum">Сума: <strong>${(Number(r.amount)||0).toFixed(2)} лв.</strong></div>
-        <div class="meta">Файл: ${escapeHtml(r.file||"-")} • ${new Date(r.ts).toLocaleString()}</div>
-        <div style="margin-top:6px;display:flex;gap:8px">
-          <button class="btn small" data-del="${r.id}">Изтрий</button>
-        </div>
-      </div>
-    `).join("") + `<div class="result"><h4>Общо</h4><div class="sum"><strong>${sum.toFixed(2)} лв.</strong></div></div>`;
-    host.querySelectorAll("[data-del]").forEach(b=>{
-      b.onclick=()=>{ const id=b.getAttribute("data-del"); const all=loadDB().filter(x=>x.id!==id); saveDB(all); renderResults(); toast("Изтрито."); };
-    });
+  // ============ Toast ============
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+  function toast(msg, kind=''){
+    toastEl.textContent = msg;
+    toastEl.style.display = 'block';
+    toastEl.style.borderColor =
+      kind==='ok' ? 'rgba(34,197,94,.6)' :
+      kind==='warn' ? 'rgba(245,158,11,.6)' :
+      kind==='err' ? 'rgba(239,68,68,.6)' :
+      'rgba(255,255,255,.18)';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> toastEl.style.display='none', 2600);
   }
 
-  // „База“ в localStorage
-  const KEY="veresia_entries_v1";
-  const loadDB = ()=>{ try{return JSON.parse(localStorage.getItem(KEY)||"[]");}catch{ return []; } };
-  const saveDB = (arr)=>localStorage.setItem(KEY, JSON.stringify(arr));
+  // ============ boot ============
+  fitCanvas();
+  // малко „мастило“ да е по-плътно при високи DPI
+  pen.size = Math.max(3.2, Math.round(pen.size * (window.devicePixelRatio||1)*0.9));
 
-  // Помощни
-  function toast(msg){ const host=$("#toast"); host.innerHTML=`<div class="msg">${msg}</div>`; setTimeout(()=>host.innerHTML="",1500); }
-  function download(dataURL,filename){ const a=document.createElement("a"); a.href=dataURL; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }
-  function escapeHtml(s){ return (s||"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-  window.addEventListener("load", fitCanvas);
 })();
 </script>
 </body>
