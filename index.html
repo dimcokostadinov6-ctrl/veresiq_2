@@ -1,10 +1,59 @@
 <!doctype html>
 <html lang="bg">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Veresia</title>
-  <link rel="stylesheet" href="styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Veresia</title>
+<style>
+:root{
+  --bg:#0d1117; --ink:#fff; --muted:#9aa4b2;
+  --line:#1f6feb55; --card:#161b22;
+  --b:#2c3646; --b2:#334155; --acc:#238636;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:#e6edf3;font-family:system-ui,Segoe UI,Roboto,Arial}
+
+.toolbar{
+  position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;
+  padding:10px 12px;border-bottom:1px solid #202938;background:#0d1117cc;backdrop-filter:blur(6px)
+}
+.brand{font-weight:700}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.toggle{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.btn{border:1px solid var(--b2);background:#0f141b;color:#e6edf3;padding:8px 12px;border-radius:10px;cursor:pointer}
+.btn:hover{border-color:#3a475c}
+.btn.primary{background:var(--acc);border-color:#2ea043}
+.btn.small{padding:4px 8px}
+
+.workspace{height:calc(100vh - 56px);display:flex}
+.canvas-wrap{
+  position:relative;flex:1;overflow:hidden;border-left:1px solid #18202b;
+  background:
+   repeating-linear-gradient(to bottom, transparent 0, transparent 22px, var(--line) 22px, var(--line) 24px),
+   #0d1117;
+}
+#pad{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+
+/* Плъзгащ се панел за търсене */
+#drawer{
+  position:fixed;right:-360px;top:0;width:360px;height:100%;
+  background:var(--card);border-left:1px solid #263142;box-shadow:-10px 0 18px rgba(0,0,0,.25);
+  transition:right .22s ease;display:flex;flex-direction:column;z-index:20
+}
+#drawer.open{right:0}
+.drawer-head{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #263142}
+.drawer-body{padding:12px;display:flex;flex-direction:column;gap:10px}
+.drawer-body input{padding:10px 12px;border:1px solid #2a3443;border-radius:10px;background:#0f141b;color:#e6edf3}
+#results{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto}
+.result{background:#0f141b;border:1px solid #263142;border-radius:12px;padding:10px}
+.result h4{margin:0 0 6px}
+.result .sum{color:#c7d2fe}
+
+/* Тост */
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:50}
+#toast .msg{background:#111827;border:1px solid #2a3443;color:#e6edf3;padding:10px 14px;border-radius:12px;box-shadow:0 10px 20px rgba(0,0,0,.35)}
+</style>
 </head>
 <body>
   <header class="toolbar">
@@ -18,7 +67,7 @@
         <input id="penOnly" type="checkbox" checked>
         Само писалка
       </label>
-      <button id="btn-search" class="btn outline">Търсене</button>
+      <button id="btn-search" class="btn">Търсене</button>
     </div>
   </header>
 
@@ -28,7 +77,6 @@
     </div>
   </main>
 
-  <!-- Плъзгащ се панел за търсене -->
   <aside id="drawer" aria-hidden="true">
     <div class="drawer-head">
       <strong>Търсене</strong>
@@ -36,14 +84,130 @@
     </div>
     <div class="drawer-body">
       <input id="q-name" type="text" placeholder="Име…">
-      <button id="q-run" class="btn primary block">Потърси</button>
+      <button id="q-run" class="btn primary">Потърси</button>
       <div id="results"></div>
     </div>
   </aside>
 
-  <!-- Тост -->
   <div id="toast"></div>
 
-  <script src="app.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const pad = $("#pad");
+  const ctx = pad.getContext("2d", { willReadFrequently:true });
+
+  const PEN_COLOR = "#ffffff";
+  const PEN_WIDTH = 3.2;
+  const penOnly = $("#penOnly");
+
+  let drawing = false;
+  let undo = [];
+
+  function fitCanvas(){
+    const r = pad.getBoundingClientRect();
+    pad.width = Math.floor(r.width * devicePixelRatio);
+    pad.height = Math.floor(r.height * devicePixelRatio);
+    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    clearCanvas();
+  }
+  function clearCanvas(){ ctx.clearRect(0,0,pad.width,pad.height); }
+
+  window.addEventListener("resize", fitCanvas);
+
+  function begin(x,y){
+    drawing = true;
+    ctx.lineJoin="round"; ctx.lineCap="round";
+    ctx.strokeStyle=PEN_COLOR; ctx.lineWidth=PEN_WIDTH;
+    ctx.beginPath(); ctx.moveTo(x,y);
+  }
+  function move(x,y){ if(!drawing) return; ctx.lineTo(x,y); ctx.stroke(); }
+  function end(){
+    if(!drawing) return; drawing=false; ctx.closePath();
+    undo.push(pad.toDataURL("image/png")); if (undo.length>25) undo.shift();
+  }
+  function toCanvas(x,y){ const r = pad.getBoundingClientRect(); return {x:x-r.left,y:y-r.top}; }
+  function allow(ev){ return !(penOnly.checked && ev.pointerType && ev.pointerType!=="pen"); }
+
+  // блокиране на скрол докато рисуваш
+  ["touchstart","touchmove"].forEach(t=>pad.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+
+  pad.addEventListener("pointerdown",(ev)=>{
+    if(!allow(ev)) return; ev.preventDefault(); pad.setPointerCapture(ev.pointerId);
+    const p = toCanvas(ev.clientX,ev.clientY); begin(p.x,p.y);
+  });
+  pad.addEventListener("pointermove",(ev)=>{
+    if(!allow(ev) || !drawing) return; ev.preventDefault();
+    const p = toCanvas(ev.clientX,ev.clientY); move(p.x,p.y);
+  });
+  const finish = ev => { if(drawing){ ev.preventDefault(); end(); } };
+  pad.addEventListener("pointerup",finish);
+  pad.addEventListener("pointercancel",finish);
+  pad.addEventListener("pointerleave",finish);
+
+  // Бутони
+  $("#btn-new").onclick = ()=>{ undo=[]; clearCanvas(); toast("Нова страница"); };
+  $("#btn-clear").onclick = ()=>{ undo=[]; clearCanvas(); };
+  $("#btn-undo").onclick = ()=>{
+    const last = undo.pop(); if (!last) return;
+    const img = new Image(); img.onload=()=>{
+      ctx.clearRect(0,0,pad.width,pad.height);
+      ctx.drawImage(img,0,0,pad.width/devicePixelRatio,pad.height/devicePixelRatio);
+    }; img.src = last;
+  };
+  $("#btn-save").onclick = ()=>{
+    const png = pad.toDataURL("image/png");
+    const fileName = `veresia-${new Date().toISOString().replace(/[:.]/g,"-")}.png`;
+    download(png,fileName);
+    const name = prompt("Въведи име:");
+    if(!name){ toast("Не е въведено име."); return; }
+    const amountStr = prompt("Сума (лв):","0");
+    const amount = parseFloat((amountStr||"").replace(",","."));
+    if(Number.isNaN(amount)){ toast("Невалидна сума."); return; }
+    const rec = { id:`e_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, name:name.trim(), amount:+amount.toFixed(2), file:fileName, ts:Date.now() };
+    const all = loadDB(); all.push(rec); saveDB(all);
+    toast(`Записано: ${rec.name} — ${rec.amount.toFixed(2)} лв.`);
+  };
+
+  // Drawer Търсене
+  const drawer = $("#drawer");
+  $("#btn-search").onclick = ()=>{ drawer.classList.add("open"); drawer.setAttribute("aria-hidden","false"); renderResults(); };
+  $("#drawer-close").onclick = ()=>{ drawer.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); };
+  $("#q-run").onclick = renderResults;
+
+  function renderResults(){
+    const q = ($("#q-name").value||"").trim().toLowerCase();
+    const list = loadDB().filter(r => !q || (r.name||"").toLowerCase().includes(q));
+    const host = $("#results");
+    if(!list.length){ host.innerHTML = `<div class="result">Няма резултати.</div>`; return; }
+    const sum = list.reduce((a,b)=>a+(Number(b.amount)||0),0);
+    host.innerHTML = list.map(r=>`
+      <div class="result">
+        <h4>${escapeHtml(r.name)}</h4>
+        <div class="sum">Сума: <strong>${(Number(r.amount)||0).toFixed(2)} лв.</strong></div>
+        <div class="meta">Файл: ${escapeHtml(r.file||"-")} • ${new Date(r.ts).toLocaleString()}</div>
+        <div style="margin-top:6px;display:flex;gap:8px">
+          <button class="btn small" data-del="${r.id}">Изтрий</button>
+        </div>
+      </div>
+    `).join("") + `<div class="result"><h4>Общо</h4><div class="sum"><strong>${sum.toFixed(2)} лв.</strong></div></div>`;
+    host.querySelectorAll("[data-del]").forEach(b=>{
+      b.onclick=()=>{ const id=b.getAttribute("data-del"); const all=loadDB().filter(x=>x.id!==id); saveDB(all); renderResults(); toast("Изтрито."); };
+    });
+  }
+
+  // „База“ в localStorage
+  const KEY="veresia_entries_v1";
+  const loadDB = ()=>{ try{return JSON.parse(localStorage.getItem(KEY)||"[]");}catch{ return []; } };
+  const saveDB = (arr)=>localStorage.setItem(KEY, JSON.stringify(arr));
+
+  // Помощни
+  function toast(msg){ const host=$("#toast"); host.innerHTML=`<div class="msg">${msg}</div>`; setTimeout(()=>host.innerHTML="",1500); }
+  function download(dataURL,filename){ const a=document.createElement("a"); a.href=dataURL; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }
+  function escapeHtml(s){ return (s||"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  window.addEventListener("load", fitCanvas);
+})();
+</script>
 </body>
 </html>
