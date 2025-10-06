@@ -1,155 +1,165 @@
-/* ==========================================================
-   Veresiya – „тетрадка“: черно платно със сини линии, писане само с писалка.
-   „Запази“: 1) PNG снимка, 2) запис {name, amount, createdAt, imageBlob} в IndexedDB,
-             3) нов празен лист.
-   Нищо извън това НЕ се променя.
-   ========================================================== */
-const canvas      = document.getElementById('pageCanvas');
-const ctx         = canvas.getContext('2d', { willReadFrequently:false });
-const nameInput   = document.getElementById('nameInput');
-const amountInput = document.getElementById('amountInput');
-const btnSave     = document.getElementById('btnSave');
-const statusText  = document.getElementById('statusText');
+(() => {
+  const $ = s => document.querySelector(s);
+  const pad = $("#pad");
+  const ctx = pad.getContext("2d", { willReadFrequently:true });
 
-/* ---------- Размер/скала без да чупим изгледа ---------- */
-function fitCanvas() {
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  const rect = canvas.getBoundingClientRect();
-  const targetW = Math.max(1, Math.floor(rect.width * dpr));
-  const targetH = Math.max(1, Math.floor(rect.height * dpr));
-  if (canvas.width !== targetW || canvas.height !== targetH) {
-    const temp = document.createElement('canvas');
-    temp.width = canvas.width; temp.height = canvas.height;
-    temp.getContext('2d').drawImage(canvas, 0, 0);
-    canvas.width = targetW; canvas.height = targetH;
-    ctx.setTransform(1,0,0,1,0,0);
-    ctx.drawImage(temp, 0, 0);
+  const PEN_COLOR = "#ffffff";
+  const PEN_WIDTH = 3.2;
+  const penOnly = $("#penOnly");
+
+  let drawing = false;
+  let path = [];
+  let undo = [];
+
+  function fitCanvas(){
+    const r = pad.getBoundingClientRect();
+    pad.width = Math.floor(r.width * devicePixelRatio);
+    pad.height = Math.floor(r.height * devicePixelRatio);
+    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    clearCanvas(); // начертай празен лист с линии от фона (фонът е в CSS)
   }
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.lineCap   = 'round';
-  ctx.lineJoin  = 'round';
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#f5f5f5';
-  ctx.lineWidth = 2.6;
-}
-fitCanvas();
-window.addEventListener('resize', fitCanvas);
-
-/* ---------- Рисуване: САМО с писалка ---------- */
-let drawing = false, lastX = 0, lastY = 0;
-
-function toXY(e){
-  const r = canvas.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
-}
-function down(e){
-  if (e.pointerType !== 'pen') return;   // само pen
-  e.preventDefault();
-  const p = toXY(e); drawing = true; lastX = p.x; lastY = p.y;
-}
-function move(e){
-  if (!drawing || e.pointerType !== 'pen') return;
-  e.preventDefault();
-  const p = toXY(e);
-  ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke();
-  lastX = p.x; lastY = p.y;
-}
-function up(){ drawing = false; }
-
-canvas.addEventListener('pointerdown', down, {passive:false});
-window.addEventListener('pointermove',  move, {passive:false});
-window.addEventListener('pointerup',    up);
-window.addEventListener('pointercancel',up);
-
-/* ---------- Помощни ---------- */
-function setStatus(t){ if (statusText) statusText.textContent = t; }
-
-function clearSheet(){
-  const w = canvas.width, h = canvas.height;
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,w,h);
-  fitCanvas(); // връща правилната скала и четка
-}
-
-function canvasToBlob(type='image/png', quality=0.92){
-  return new Promise(resolve=>{
-    if (canvas.toBlob) canvas.toBlob(b => resolve(b), type, quality);
-    else {
-      const dataURL = canvas.toDataURL(type, quality);
-      const byteString = atob(dataURL.split(',')[1]);
-      const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
-      const ab = new ArrayBuffer(byteString.length);
-      const ia = new Uint8Array(ab);
-      for (let i=0;i<byteString.length;i++) ia[i]=byteString.charCodeAt(i);
-      resolve(new Blob([ab], {type: mimeString}));
-    }
-  });
-}
-
-/* ---------- IndexedDB ---------- */
-const DB_NAME = 'veresiyaDB';
-const DB_VER  = 1;
-const STORE   = 'entries';
-
-let _dbPromise = null;
-function openDB(){
-  if (_dbPromise) return _dbPromise;
-  _dbPromise = new Promise((resolve, reject)=>{
-    const req = indexedDB.open(DB_NAME, DB_VER);
-    req.onupgradeneeded = (ev)=>{
-      const db = ev.target.result;
-      if (!db.objectStoreNames.contains(STORE)){
-        const st = db.createObjectStore(STORE, { keyPath:'id' });
-        st.createIndex('byName','name',{unique:false});
-        st.createIndex('byCreated','createdAt',{unique:false});
-      }
-    };
-    req.onsuccess=()=>resolve(req.result);
-    req.onerror=()=>reject(req.error);
-  });
-  return _dbPromise;
-}
-async function putEntry(entry){
-  const db = await openDB();
-  return new Promise((resolve,reject)=>{
-    const tx = db.transaction(STORE,'readwrite');
-    tx.oncomplete = ()=>resolve(true);
-    tx.onerror    = ()=>reject(tx.error);
-    tx.objectStore(STORE).put(entry);
-  });
-}
-
-/* ---------- „Запази“: PNG + БД + нов лист ---------- */
-async function onSave(){
-  try{
-    const name   = (nameInput?.value || '').trim();
-    const amtStr = (amountInput?.value || '').trim().replace(',', '.');
-
-    if (!name){ setStatus('Въведи име.'); nameInput?.focus(); return; }
-    const amount = Number(amtStr);
-    if (!amtStr || Number.isNaN(amount)){ setStatus('Въведи валидна сума (напр. 12.40).'); amountInput?.focus(); return; }
-
-    setStatus('Записвам...');
-
-    const pngBlob = await canvasToBlob('image/png', .92);
-
-    const entry = {
-      id: Date.now().toString(),
-      name,
-      amount: Number(amount.toFixed(2)),
-      createdAt: new Date().toISOString(),
-      imageBlob: pngBlob
-    };
-    await putEntry(entry);
-
-    clearSheet();
-    if (nameInput) nameInput.value = '';
-    if (amountInput) amountInput.value = '';
-    setStatus('Записано. Нов лист е готов.');
-  } catch(err){
-    console.error(err);
-    setStatus('Грешка при запис.');
+  function clearCanvas(){
+    ctx.clearRect(0,0,pad.width,pad.height);
   }
-}
-btnSave?.addEventListener('click', onSave);
+  window.addEventListener("resize", fitCanvas);
 
-setStatus('Готово.');
+  function begin(x,y){
+    drawing = true; path = [{x,y}];
+    ctx.lineJoin="round"; ctx.lineCap="round";
+    ctx.strokeStyle=PEN_COLOR; ctx.lineWidth=PEN_WIDTH;
+    ctx.beginPath(); ctx.moveTo(x,y);
+  }
+  function move(x,y){
+    if(!drawing) return;
+    ctx.lineTo(x,y); ctx.stroke();
+    path.push({x,y});
+  }
+  function end(){
+    if(!drawing) return;
+    drawing=false; ctx.closePath();
+    // snapshot за undo
+    undo.push(pad.toDataURL("image/png"));
+    if (undo.length>25) undo.shift();
+  }
+
+  function client(ev){
+    if (ev.touches && ev.touches[0]) return {x:ev.touches[0].clientX,y:ev.touches[0].clientY};
+    return {x:ev.clientX,y:ev.clientY};
+  }
+  function toCanvas(x,y){
+    const r = pad.getBoundingClientRect();
+    return {x:x-r.left,y:y-r.top};
+  }
+  function allow(ev){
+    if (penOnly.checked && ev.pointerType && ev.pointerType!=="pen") return false;
+    return true;
+  }
+
+  // предотвратява скрола при рисуване
+  ["touchstart","touchmove"].forEach(t=>{
+    pad.addEventListener(t, e=>e.preventDefault(), {passive:false});
+  });
+
+  pad.addEventListener("pointerdown", (ev)=>{
+    if(!allow(ev)) return;
+    ev.preventDefault();
+    pad.setPointerCapture(ev.pointerId);
+    const p = toCanvas(ev.clientX, ev.clientY);
+    begin(p.x,p.y);
+  });
+  pad.addEventListener("pointermove", (ev)=>{
+    if(!allow(ev) || !drawing) return;
+    ev.preventDefault();
+    const p = toCanvas(ev.clientX, ev.clientY);
+    move(p.x,p.y);
+  });
+  const finish = (ev)=>{ if(drawing){ ev.preventDefault(); end(); } };
+  pad.addEventListener("pointerup", finish);
+  pad.addEventListener("pointercancel", finish);
+  pad.addEventListener("pointerleave", finish);
+
+  /* ---------- UI ---------- */
+  $("#btn-new").onclick = () => { undo=[]; clearCanvas(); toast("Нова страница"); };
+  $("#btn-clear").onclick = () => { undo=[]; clearCanvas(); };
+  $("#btn-undo").onclick = () => {
+    const last = undo.pop(); if (!last) return;
+    const img = new Image(); img.onload = () => {
+      ctx.clearRect(0,0,pad.width,pad.height);
+      ctx.drawImage(img, 0,0, pad.width/devicePixelRatio, pad.height/devicePixelRatio);
+    }; img.src = last;
+  };
+
+  $("#btn-save").onclick = async () => {
+    // 1) сваляне на PNG
+    const png = pad.toDataURL("image/png");
+    const fileName = `veresia-${new Date().toISOString().replace(/[:.]/g,"-")}.png`;
+    downloadDataURL(png, fileName);
+
+    // 2) ръчно въвеждане (както беше при първата сайт-версия)
+    const name = prompt("Въведи име:");
+    if (!name){ toast("Не е въведено име."); return; }
+    const amountStr = prompt("Сума (лв):", "0");
+    const amount = parseFloat((amountStr||"").replace(",","."));
+    if (Number.isNaN(amount)){ toast("Невалидна сума."); return; }
+
+    const rec = { id: `e_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+                  name: name.trim(), amount: +(amount.toFixed(2)),
+                  file: fileName, ts: Date.now() };
+    const all = loadDB(); all.push(rec); saveDB(all);
+    toast(`Записано: ${rec.name} — ${rec.amount.toFixed(2)} лв.`);
+  };
+
+  // Drawer
+  const drawer = $("#drawer");
+  $("#btn-search").onclick = ()=>{ drawer.classList.add("open"); drawer.setAttribute("aria-hidden","false"); renderResults(); };
+  $("#drawer-close").onclick = ()=>{ drawer.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); };
+  $("#q-run").onclick = renderResults;
+
+  function renderResults(){
+    const q = ($("#q-name").value||"").trim().toLowerCase();
+    const list = loadDB().filter(r => !q || (r.name||"").toLowerCase().includes(q));
+    const host = $("#results");
+    if (!list.length){ host.innerHTML = `<div class="result">Няма резултати.</div>`; return; }
+    const sum = list.reduce((a,b)=>a+(Number(b.amount)||0),0);
+    host.innerHTML = list.map(r=>`
+      <div class="result">
+        <h4>${escapeHtml(r.name)}</h4>
+        <div class="sum">Сума: <strong>${(Number(r.amount)||0).toFixed(2)} лв.</strong></div>
+        <div class="meta">Файл: ${escapeHtml(r.file||"-")} • ${new Date(r.ts).toLocaleString()}</div>
+        <div style="margin-top:6px;display:flex;gap:8px">
+          <button class="btn small" data-del="${r.id}">Изтрий</button>
+        </div>
+      </div>
+    `).join("") + `
+      <div class="result"><h4>Общо</h4><div class="sum"><strong>${sum.toFixed(2)} лв.</strong></div></div>
+    `;
+    host.querySelectorAll("[data-del]").forEach(b=>{
+      b.onclick = () => {
+        const id = b.getAttribute("data-del");
+        const all = loadDB().filter(x=>x.id!==id); saveDB(all);
+        renderResults(); toast("Изтрито.");
+      };
+    });
+  }
+
+  /* ---------- База (localStorage) ---------- */
+  const KEY = "veresia_entries_v1";
+  function loadDB(){ try{ return JSON.parse(localStorage.getItem(KEY)||"[]"); }catch{ return []; } }
+  function saveDB(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
+
+  /* ---------- Помощни ---------- */
+  function toast(msg){
+    const host = $("#toast");
+    host.innerHTML = `<div class="msg">${msg}</div>`;
+    setTimeout(()=>host.innerHTML="",1500);
+  }
+  function downloadDataURL(dataURL, filename){
+    const a = document.createElement("a");
+    a.href = dataURL; a.download = filename; document.body.appendChild(a);
+    a.click(); a.remove();
+  }
+  function escapeHtml(s){ return (s||"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // Старт
+  window.addEventListener("load", fitCanvas);
+})();
