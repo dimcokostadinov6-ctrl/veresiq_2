@@ -32,6 +32,15 @@
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
+
+  /* Значка „ръчичка с химикал“ */
+  .pen-badge{
+    position:fixed; right:10px; bottom:10px; z-index:6;
+    background:#0f172a;border:1px solid #263042;border-radius:999px;
+    padding:.35rem .55rem; font-size:1rem; user-select:none; pointer-events:none; opacity:.9;
+    display:flex; align-items:center; gap:.4rem;
+  }
+  .pen-badge span{font-size:1.05rem}
 </style>
 </head>
 <body>
@@ -59,11 +68,12 @@
   </div>
 
   <div id="toast" class="toast"></div>
+  <div class="pen-badge" title="Пише се само със стилус"><span>🖐️🖊️</span><small>Стилус</small></div>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <script>
-/* ===== Mini IndexedDB ===== */
+/* ===== Мини IndexedDB ===== */
 const DB_NAME='veresia-db', STORE='names', DB_VER=1;
 function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
 r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);};
@@ -87,7 +97,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
   resize();
 
-  // приемаме само стилус
+  // Пишем САМО със стилус
   const isPen=e=>e.pointerType==='pen';
   const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
 
@@ -99,7 +109,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   function toast(m,ms=2200){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
   const step=t=>{hint.textContent=t};
 
-  async function saveEntry(name,amount){const key=name.trim().toLowerCase();const prev=await idb.get(key)||{name, total:0, items:[]};prev.total=+(prev.total+amount).toFixed(2);prev.items.push({amount,ts:Date.now()});await idb.set(key,prev)}
+  async function saveEntry(name,amount){const key=name.trim().toLowerCase();const prev=await idb.get(key)||{name,total:0,items:[]};prev.total=+(prev.total+amount).toFixed(2);prev.items.push({amount,ts:Date.now()});await idb.set(key,prev)}
   async function allEntries(){const rows=[];await idb.iterate(v=>rows.push(v));rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));return rows}
 
   /* ===== Търсене/предложения ===== */
@@ -111,29 +121,27 @@ window.addEventListener('DOMContentLoaded',()=>{
   async function renderSearch(term){const t=(term||'').trim().toLowerCase();const rows=await allEntries();const hit=rows.filter(r=>r.name.toLowerCase().includes(t));let s=0;rowsEl.innerHTML='';hit.forEach(r=>{s+=r.total;const d=document.createElement('div');d.innerHTML=`<span>${r.name}</span><strong>${r.total.toFixed(2)} лв</strong>`;rowsEl.appendChild(d)});sumEl.textContent=`${s.toFixed(2)} лв`;}
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  /* ===== Подготовка на изображение за OCR ===== */
+  /* ===== Подготовка за OCR (махане на линии + бинаризация) ===== */
   function prepImageForOCR(src){
     const dpr=window.devicePixelRatio||1;
-    const scale=3;
+    const scale=3; // усилваме детайл
     const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
     const out=document.createElement('canvas'); out.width=w; out.height=h;
     const o=out.getContext('2d',{willReadFrequently:true});
     o.drawImage(src,0,0,w,h);
     let img=o.getImageData(0,0,w,h), d=img.data;
 
-    // 1) махаме линии/фон -> бяло, мастилото -> черно
     for(let i=0;i<d.length;i+=4){
       const r=d[i], g=d[i+1], b=d[i+2];
       const bright=r+g+b;
-      const isInk = bright>680;                  // бяло писане
-      const isBlue= b>60 && b>r+20 && b>g+10;    // тъмносини линии
+      const isInk = bright>680;                  // бяло мастило
+      const isBlue= b>60 && b>r+20 && b>g+10;    // сини линии
       let v;
       if(isInk) v=0; else if(isBlue) v=255; else v=255;
       d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
     }
     o.putImageData(img,0,0);
 
-    // 2) адаптивна бинаризация (скромна)
     const g=o.getImageData(0,0,w,h); const G=g.data;
     for(let y=1;y<h-1;y++){
       for(let x=1;x<w-1;x++){
@@ -147,18 +155,17 @@ window.addEventListener('DOMContentLoaded',()=>{
     return out;
   }
 
-  /* ===== По-мощен OCR: постоянен worker + опашка (fire-and-forget) ===== */
+  /* ===== По-мощен OCR: постоянен worker + опашка (бекграунд) ===== */
   const ocr = {
-    worker:null, ready:false, queue:[],
+    worker:null, ready:false, queue:[], _busy:false,
     async ensure(){
       if(this.ready) return;
       step('OCR: зареждане…');
-      // tessdata BEST модели
       this.worker = await Tesseract.createWorker({
         workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
         corePath  :'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/dist/tesseract-core.wasm.js',
         langPath  :'https://tessdata.projectnaptha.com/4.0.0_best',
-        logger:m=>{ if(m?.status==='loading language traineddata'){ step(`OCR: зареждане ${Math.round((m.progress||0)*100)}%`) } }
+        logger:m=>{ if(m?.status?.includes('loading')) step('OCR: зареждане…') }
       });
       await this.worker.load(); await this.worker.loadLanguage('bul+eng'); await this.worker.initialize('bul+eng');
       await this.worker.setParameters({
@@ -169,8 +176,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           "абвгдежзийклмнопрстуфхцчшщъьюяАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ" +
           "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-–—., '=:"
       });
-      this.ready=true; step('OCR: готов');
-      this.drain();
+      this.ready=true; step('OCR: готов'); this.drain();
     },
     push(blob){ this.queue.push(blob); this.drain(); },
     async drain(){
@@ -193,13 +199,14 @@ window.addEventListener('DOMContentLoaded',()=>{
       finally{ this._busy=false; this.drain(); }
     }
   };
-  // стартираме зареждане на заден план
-  setTimeout(()=>ocr.ensure().catch(console.warn), 800);
+  // стартираме зареждане на worker-а в бекграунд
+  setTimeout(()=>ocr.ensure().catch(console.warn), 500);
 
   function parseLines(text){
     const results=[];
     const norm=(s)=>s.normalize('NFC').replace(/[–—−]/g,'-');
     const lines = norm(text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    // име (кирилица/латиница) + разделител + число
     const rxGlobal=/([A-Za-zА-Яа-яЁёЇїІіЄєЪъЬьҐґЩщЧчЮюЯяЙйЍѝЉљЊњЋћЏџ\s'’.\-]{2,50})\s*[-=:]\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/gu;
     for (const raw of lines){
       let m; while((m=rxGlobal.exec(raw))!==null){
@@ -211,21 +218,20 @@ window.addEventListener('DOMContentLoaded',()=>{
     return results;
   }
 
-  /* ===== Запази: снимка → clean → OCR в опашката ===== */
+  /* ===== Запази: запис на PNG → чист лист → OCR в опашката ===== */
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
       btnSave.disabled=true; step('Запис: снимка…');
       const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
-      // сваляне
+      // сваляне на PNG
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
-      // незабавно чистене, за да продължиш да пишеш
+      // веднага чистим платното — можеш да продължиш да пишеш
       ctx.clearRect(0,0,canvas.width,canvas.height);
       step('OCR в бекграунд…');
-      // пускаме OCR на заден план (без await)
-      ocr.push(blob);
+      ocr.push(blob); // НЕ чакаме — работи във фонов режим
     }catch(err){console.error(err);toast('Грешка при „Запази“');step('Грешка')}
     finally{btnSave.disabled=false}
   };
