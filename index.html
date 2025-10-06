@@ -1,34 +1,336 @@
 <!doctype html>
 <html lang="bg">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Veresiya</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Veresia</title>
+<style>
+  :root{
+    --bg:#0e1116;
+    --line:#1e3558;
+    --ink:#f3f4f6;             /* бялото за писане */
+    --ui:#d1d5db;
+    --ui-strong:#93c5fd;
+    --ok:#16a34a;
+    --warn:#f59e0b;
+  }
+  html,body{
+    margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;
+    touch-action:none; /* по-добър контрол на pointer events */
+  }
+  .topbar{
+    position:fixed; inset:0 0 auto 0; display:flex; gap:.5rem; align-items:center;
+    padding:.5rem .75rem; background:rgba(11,15,20,.65); backdrop-filter: blur(8px);
+    border-bottom:1px solid rgba(255,255,255,.06); z-index:5;
+  }
+  .btn{
+    appearance:none; border:1px solid rgba(255,255,255,.18); color:#e5e7eb; background:transparent;
+    padding:.45rem .7rem; border-radius:.5rem; font-size:.95rem;
+  }
+  .btn:hover{ border-color:#ffffff44; }
+  .btn.primary{ border-color:#60a5fa; background:#1e293b; }
+  .btn.good{ border-color:#22c55e; }
+  .btn.danger{ border-color:#ef4444; }
+  .sep{ flex:1 }
+  #hint{ font-size:.85rem; opacity:.9}
+  .stage{
+    position:fixed; inset:44px 0 0 0; display:grid; grid-template-columns: 1fr auto;
+  }
+  .board-wrap{ position:relative; overflow:hidden; }
+  canvas#board{
+    width:100%; height:100%; display:block;
+    touch-action:none; /* за писане */
+    background:
+      repeating-linear-gradient( to bottom,
+        var(--bg) 0px, var(--bg) 26px,
+        var(--line) 26px, var(--line) 27px); /* сини редове */
+  }
+  /* страничен панел за търсене */
+  .panel{
+    width:min(360px, 92vw); background:#0b1220; border-left:1px solid #1f2a44; padding:.75rem; display:none;
+  }
+  .panel.open{ display:block }
+  .panel h3{ margin:.2rem 0 .6rem; font-weight:600; }
+  .field{ display:flex; gap:.5rem; align-items:center; margin:.25rem 0 .75rem}
+  .field input{
+    flex:1; padding:.45rem .6rem; border-radius:.45rem; background:#0c1426; color:#e5e7eb;
+    border:1px solid #24314f;
+  }
+  .list{ font-size:.95rem; line-height:1.4 }
+  .list div{ display:flex; justify-content:space-between; padding:.35rem .2rem; border-bottom:1px dashed #1c2744 }
+  .pill{ font-size:.8rem; padding:.2rem .45rem; border:1px solid #2b3b64; border-radius:999px; }
+  /* тоаст */
+  .toast{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:14px; background:#111827; border:1px solid #374151;
+    padding:.6rem .8rem; border-radius:.6rem; z-index:10; display:none;
+  }
+  .toast.show{ display:block }
+</style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="field">
-      <label for="nameInput">Име</label>
-      <input id="nameInput" type="text" placeholder="напр. Иван Петров" autocomplete="off" />
-    </div>
-    <div class="field">
-      <label for="amountInput">Сума</label>
-      <input id="amountInput" type="number" step="0.01" inputmode="decimal" placeholder="напр. 12.40" />
-    </div>
-    <button id="btnSave" class="primary">Запази</button>
-  </header>
+  <div class="topbar">
+    <strong>Veresia</strong>
+    <button id="btnClear" class="btn">Изчисти</button>
+    <button id="btnSave" class="btn primary">Запази</button>
+    <div class="sep"></div>
+    <button id="btnSearch" class="btn">Търсене</button>
+    <span id="hint" title="Пише се само със стилус">✍️ Само писалка</span>
+  </div>
 
-  <main>
-    <div id="canvasWrap">
-      <canvas id="pageCanvas"></canvas>
+  <div class="stage">
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
     </div>
-  </main>
+    <aside id="searchPanel" class="panel" aria-label="Търсене">
+      <h3>Търсене</h3>
+      <div class="field">
+        <input id="q" type="search" placeholder="Име…" list="suggestions" autocomplete="off" />
+        <datalist id="suggestions"></datalist>
+        <span id="sum" class="pill">0.00 лв</span>
+      </div>
+      <div id="rows" class="list" aria-live="polite"></div>
+    </aside>
+  </div>
 
-  <footer class="statusbar">
-    <span id="statusText">Готово.</span>
-  </footer>
+  <div id="toast" class="toast"></div>
 
-  <script src="app.js"></script>
+  <!-- Tesseract.js за OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- Малка помощ за IndexedDB -->
+  <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/idb-keyval.iife.min.js"></script>
+
+<script>
+(()=>{
+  // ---------- Canvas setup (сини редове и писане само с писалка) ----------
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d', { willReadFrequently:true });
+  let W=0,H=0, drawing=false, last=null, pressure=0.7;
+
+  function resize(){
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    W = Math.floor(rect.width * dpr);
+    H = Math.floor(rect.height * dpr);
+    canvas.width = W; canvas.height = H;
+    ctx.scale(dpr,dpr);
+    redrawBackground(); // линиите са в CSS, но това „запича“ остър ръкопис
+  }
+  function redrawBackground(){
+    // не рисуваме линии тук — фона е CSS; подготвяме само стил за писалка
+    ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+    ctx.fillStyle=ctx.strokeStyle;
+  }
+  window.addEventListener('resize', resize, { passive:true });
+  resize();
+
+  // Филтър: приемаме само стилус
+  function isPen(e){ return e.pointerType === 'pen'; }
+
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top, p: e.pressure || 0.5 };
+  }
+
+  canvas.addEventListener('pointerdown', e=>{
+    if(!isPen(e)) return;
+    e.preventDefault();
+    drawing=true;
+    last = pos(e);
+  });
+  canvas.addEventListener('pointermove', e=>{
+    if(!drawing || !isPen(e)) return;
+    const p = pos(e);
+    const w = 2 + (p.p*3.5); // динамична дебелина според натиска
+    ctx.lineWidth=w;
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
+  });
+  const stop=()=>{ drawing=false; last=null; };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+  canvas.addEventListener('pointerleave', stop);
+
+  // ---------- UI елементи ----------
+  const toastEl = document.getElementById('toast');
+  function toast(msg, ms=2200){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(()=>toastEl.classList.remove('show'), ms);
+  }
+
+  document.getElementById('btnClear').onclick = ()=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // запазваме сините линии (фонът си е CSS) — няма нужда да рисуваме фон
+    toast('Изчистено.');
+  };
+
+  // ---------- IndexedDB (идентификатор на магазин) ----------
+  const store = new idbKeyval.Store('veresia-db', 'names');
+
+  async function saveEntry(name, amount){
+    const key = name.trim().toLowerCase();
+    const prev = await idbKeyval.get(key, store) || { name, total:0, items:[] };
+    prev.total = +(prev.total + amount).toFixed(2);
+    prev.items.push({ amount, ts: Date.now() });
+    await idbKeyval.set(key, prev, store);
+  }
+
+  async function allEntries(){
+    const rows=[];
+    await idbKeyval.iterate((v,k)=>{ rows.push(v); }, store);
+    // сортираме по име
+    rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));
+    return rows;
+  }
+
+  // ---------- Търсене панел ----------
+  const panel = document.getElementById('searchPanel');
+  const btnSearch = document.getElementById('btnSearch');
+  const q = document.getElementById('q');
+  const rowsEl = document.getElementById('rows');
+  const sumEl = document.getElementById('sum');
+  const sugg = document.getElementById('suggestions');
+
+  btnSearch.onclick = async ()=>{
+    panel.classList.toggle('open');
+    if(panel.classList.contains('open')){
+      await refreshSuggestions();
+      q.focus();
+    }
+  };
+
+  async function refreshSuggestions(){
+    const rows = await allEntries();
+    sugg.innerHTML='';
+    rows.forEach(r=>{
+      const opt = document.createElement('option');
+      opt.value = r.name;
+      sugg.appendChild(opt);
+    });
+    // ако има въведено, опресняваме списъка
+    if(q.value) renderSearch(q.value);
+  }
+
+  q.addEventListener('input', ()=> renderSearch(q.value));
+
+  async function renderSearch(term){
+    const t = term.trim().toLowerCase();
+    const rows = await allEntries();
+    const hit = rows.filter(r=> r.name.toLowerCase().includes(t));
+    rowsEl.innerHTML='';
+    let s=0;
+    hit.forEach(r=>{
+      const line = document.createElement('div');
+      line.innerHTML = `<span>${r.name}</span><strong>${r.total.toFixed(2)} лв</strong>`;
+      rowsEl.appendChild(line);
+      s += r.total;
+    });
+    sumEl.textContent = `${s.toFixed(2)} лв`;
+  }
+
+  // ---------- OCR: разчитане на български ръкопис (най-добро налично с Tesseract) ----------
+  // Заб.: Tesseract е тренир. предимно за печатен шрифт; за ръкопис на кирилица пак работи, но
+  // точността зависи от почерка. Ползваме "script/Cyrillic" + BG език, ако е наличен.
+  async function ocrCanvasToEntries(){
+    // експорт в Blob -> ImageData за Tesseract
+    const blob = await new Promise(res=> canvas.toBlob(b=>res(b),'image/png'));
+    const imgURL = URL.createObjectURL(blob);
+
+    const worker = await Tesseract.createWorker({
+      logger: m => { if(m.status==='recognizing text') hint.textContent = `OCR ${Math.round(m.progress*100)}%`; }
+    });
+    try{
+      // Опит 1: език bul; резервен: osd + script/Cyrillic
+      await worker.loadLanguage('bul');
+      await worker.initialize('bul');
+    }catch(_){
+      await worker.loadLanguage('script/Cyrillic');
+      await worker.initialize('script/Cyrillic');
+    }
+    const { data:{ text } } = await worker.recognize(imgURL);
+    await worker.terminate();
+    URL.revokeObjectURL(imgURL);
+
+    // Парсваме редове: „Име - число“
+    const entries = parseBulgarianEntries(text || '');
+    return entries;
+  }
+
+  function normalizeName(raw){
+    let s = raw.replace(/[^\p{L}\s'-]/gu,' ').replace(/\s+/g,' ').trim();
+    if(!s) return '';
+    // Title case за кирилица
+    s = s.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
+    return s;
+  }
+
+  function parseBulgarianEntries(text){
+    const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const out=[];
+    for(const ln of lines){
+      // търси „Име - 12.34“ (допуска , и .)
+      const m = ln.match(/^(.{2,40}?)\s*[-–]\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)\b/);
+      if(m){
+        const name = normalizeName(m[1]);
+        const amt = parseFloat(String(m[2]).replace(',','.'));
+        if(name && isFinite(amt)) out.push({ name, amount:+amt.toFixed(2) });
+      }
+    }
+    return out;
+  }
+
+  // ---------- Запази: PNG + OCR + База + изчистване ----------
+  const btnSave = document.getElementById('btnSave');
+  const hint = document.getElementById('hint');
+
+  btnSave.onclick = async ()=>{
+    try{
+      hint.textContent = 'Запис…';
+      // 1) Сваляне на PNG
+      const blob = await new Promise(res=> canvas.toBlob(b=>res(b),'image/png'));
+      downloadBlob(blob, `veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`);
+
+      // 2) OCR -> entries
+      hint.textContent = 'OCR стартира…';
+      const entries = await ocrCanvasToEntries();
+
+      // 3) Запис в IndexedDB
+      if(entries.length){
+        for(const e of entries) await saveEntry(e.name, e.amount);
+        toast(`Записани ${entries.length} ред(а) в базата.`, 2600);
+      }else{
+        toast('Не открих имена/суми. (Провери формата „Име - сума“)', 3000);
+      }
+
+      // 4) Изчистване на платното
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      hint.textContent='Готово';
+      // обнови предложенията в панела, ако е отворен
+      if(panel.classList.contains('open')) await refreshSuggestions();
+    }catch(err){
+      console.error(err);
+      toast('Грешка при „Запази“. Виж конзолата.', 3500);
+      hint.textContent='Грешка';
+    }
+  };
+
+  function downloadBlob(blob, filename){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+
+  // Първоначално зареди предложенията (тихо)
+  refreshSuggestions();
+
+})();
+</script>
 </body>
 </html>
