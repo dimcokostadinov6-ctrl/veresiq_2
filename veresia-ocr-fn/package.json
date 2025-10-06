@@ -1,10 +1,13 @@
 {
-  "name": "veresia-ocr-fn",
+  "name": "veresia-ocr",
   "version": "1.0.0",
-  "type": "module",
+  "private": true,
   "main": "index.js",
+  "scripts": {
+    "start": "functions-framework --target=ocr --port=${PORT:-8080}"
+  },
   "dependencies": {
-    "@google-cloud/vision": "^4.3.2",
-    "cors": "^2.8.5"
+    "@google-cloud/functions-framework": "^3.4.0",
+    "@google-cloud/vision": "^4.3.0"
   }
 }
