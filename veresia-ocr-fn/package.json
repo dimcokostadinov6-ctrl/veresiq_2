@@ -1,13 +1,70 @@
-{
-  "name": "veresia-ocr",
-  "version": "1.0.0",
-  "private": true,
-  "main": "index.js",
-  "scripts": {
-    "start": "functions-framework --target=ocr --port=${PORT:-8080}"
-  },
-  "dependencies": {
-    "@google-cloud/functions-framework": "^3.4.0",
-    "@google-cloud/vision": "^4.3.0"
-  }
+// index.js
+import { ImageAnnotatorClient } from "@google-cloud/vision";
+
+// Инициализация на Vision клиент (изисква активирано Cloud Vision API в същия проект)
+const client = new ImageAnnotatorClient();
+
+// --- CORS помощници ---
+function setCors(res) {
+  res.set("Access-Control-Allow-Origin", "*");              // по желание: замени * с твоя домейн
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
 }
+
+// --- Парсване: Само кирилица + числа, шаблон „Име - сума“ ---
+function parseBulgarian(text) {
+  const out = [];
+  const norm = (s) => String(s || "")
+    .normalize("NFC")
+    .replace(/[–—−]/g, "-");
+
+  // Само редове с нещо полезно
+  const lines = norm(text)
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  // Име (кирилица, интервали, ., ' и -) + разделител [-=:] + число с , или .
+  const rx = /([А-Яа-яЁёЪъЬьЩщШшЦцЖжЙйЮюЯяЧчХхФфЗзИиЙйЛлКкМмНнРрТтСсВвПпБбДдГгЯяЪъЬьЩщШшЧчЦцЖж\s.'-]{2,50})\s*[-=:]\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)/gu;
+
+  for (const raw of lines) {
+    let m;
+    while ((m = rx.exec(raw)) !== null) {
+      const name = m[1].replace(/[^\p{Script=Cyrillic}\s.'-]/gu, " ")
+                       .replace(/\s+/g, " ")
+                       .trim();
+      const amount = parseFloat(String(m[2]).replace(",", "."));
+      if (name && Number.isFinite(amount)) {
+        out.push({ name, amount: +amount.toFixed(2) });
+      }
+    }
+  }
+  return out;
+}
+
+// === ЕКСПОРТИРАНА Cloud Run/Functions функция ===
+// НЯМА app.listen тук!
+export const ocr = async (req, res) => {
+  setCors(res);
+  if (req.method === "OPTIONS") {
+    // CORS preflight
+    return res.status(204).send("");
+  }
+
+  try {
+    const { image } = req.body || {};
+    if (!image) {
+      return res.status(400).json({ error: "Missing image (base64 PNG/JPEG)" });
+    }
+
+    // OCR с Google Vision
+    const [result] = await client.textDetection({ image: { content: image } });
+    const text = (result?.textAnnotations?.[0]?.description) || "";
+    const entries = parseBulgarian(text);
+
+    return res.json({ text, entries });
+  } catch (err) {
+    console.error("[OCR] error:", err);
+    return res.status(500).json({ error: err.message || "OCR failed" });
+  }
+};
