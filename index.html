@@ -32,8 +32,10 @@
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
-  .spinner{margin-left:.5rem;display:none}
-  .spinner.show{display:inline-block}
+  .pen-ind{position:fixed;right:10px;top:54px;z-index:6;opacity:.9;display:flex;gap:.4rem;align-items:center;background:#0e1626;border:1px solid #24314f;border-radius:999px;padding:.25rem .55rem}
+  .pen-ind .dot{width:.55rem;height:.55rem;border-radius:50%;}
+  .pen-idle{background:#4b5563}
+  .pen-busy{background:#60a5fa}
 </style>
 </head>
 <body>
@@ -43,7 +45,10 @@
     <div class="sep"></div>
     <button id="btnSearch" class="btn">Търсене</button>
     <span id="hint" title="Пише се само със стилус">✍️ Само писалка</span>
-    <span id="busy" class="spinner">OCR…</span>
+  </div>
+
+  <div class="pen-ind" title="Статус на писане / OCR">
+    <span class="dot pen-idle" id="penDot"></span><small id="penTxt">Готово</small>
   </div>
 
   <div class="stage">
@@ -63,10 +68,12 @@
 
   <div id="toast" class="toast"></div>
 
+  <!-- Tesseract – fallback, ако облакът не отговори -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
 <script>
-/* ============= НАСТРОЙКА: сложи URL на функцията тук ============= */
-const OCR_ENDPOINT = 'https://europe-central2-YOUR_PROJECT_ID.cloudfunctions.net/ocr';
-/* ================================================================== */
+/* ===== Настройки ===== */
+const OCR_URL = 'https://ocr-XXXXXXXXX.region.run.app'; // <-- СМЕНИ с твоето Cloud Run URL или остави '' за само Tesseract
 
 /* ===== Мини IndexedDB ===== */
 const DB_NAME='veresia-db', STORE='names', DB_VER=1;
@@ -87,86 +94,152 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
     canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineJoin='round';ctx.lineCap='round';ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';}
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.lineJoin='round';ctx.lineCap='round';
+    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
+  }
   window.addEventListener('resize',resize,{passive:true});
   window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
   resize();
 
   const isPen=e=>e.pointerType==='pen';
   const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
-
   canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
   canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
   const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
 
-  const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint'); const busy=document.getElementById('busy');
+  /* ===== Статус / тост ===== */
+  const toastEl=document.getElementById('toast');
   function toast(m,ms=2200){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
-  const step=t=>{hint.textContent=t};
+  const penDot=document.getElementById('penDot'), penTxt=document.getElementById('penTxt');
+  function statusIdle(){penDot.className='dot pen-idle'; penTxt.textContent='Готово'}
+  function statusBusy(msg='OCR…'){penDot.className='dot pen-busy'; penTxt.textContent=msg}
 
-  async function saveEntry(name,amount){const key=name.trim().toLowerCase();const prev=await idb.get(key)||{name,total:0,items:[]};prev.total=+(prev.total+amount).toFixed(2);prev.items.push({amount,ts:Date.now()});await idb.set(key,prev)}
-  async function allEntries(){const rows=[];await idb.iterate(v=>rows.push(v));rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));return rows}
+  async function saveEntry(name,amount){
+    const key=name.trim().toLowerCase();
+    const prev=await idb.get(key)||{name,total:0,items:[]};
+    prev.total=+(prev.total+amount).toFixed(2);
+    prev.items.push({amount,ts:Date.now()});
+    await idb.set(key,prev);
+  }
+  async function allEntries(){
+    const rows=[]; await idb.iterate(v=>rows.push(v));
+    rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));
+    return rows;
+  }
 
-  const panel=document.getElementById('searchPanel');const btnSearch=document.getElementById('btnSearch');
-  const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
+  /* ===== Търсене ===== */
+  const panel=document.getElementById('searchPanel');
+  const btnSearch=document.getElementById('btnSearch');
+  const q=document.getElementById('q');
+  const rowsEl=document.getElementById('rows');
+  const sumEl=document.getElementById('sum');
+  const sugg=document.getElementById('suggestions');
 
-  btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
+  btnSearch.onclick=async()=>{
+    panel.classList.toggle('open'); resize();
+    if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}
+  };
   async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
-  async function renderSearch(term){const t=(term||'').trim().toLowerCase();const rows=await allEntries();const hit=rows.filter(r=>r.name.toLowerCase().includes(t));let s=0;rowsEl.innerHTML='';hit.forEach(r=>{s+=r.total;const d=document.createElement('div');d.innerHTML=`<span>${r.name}</span><strong>${r.total.toFixed(2)} лв</strong>`;rowsEl.appendChild(d)});sumEl.textContent=`${s.toFixed(2)} лв`;}
+  async function renderSearch(term){
+    const t=(term||'').trim().toLowerCase();
+    const rows=await allEntries();
+    const hit=rows.filter(r=>r.name.toLowerCase().includes(t));
+    let s=0; rowsEl.innerHTML='';
+    hit.forEach(r=>{s+=r.total; const d=document.createElement('div'); d.innerHTML=`<span>${r.name}</span><strong>${r.total.toFixed(2)} лв</strong>`; rowsEl.appendChild(d)});
+    sumEl.textContent=`${s.toFixed(2)} лв`;
+  }
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  function canvasToDataURL() {
-    // работим с оригиналния размер на canvas
-    return canvas.toDataURL('image/png');
-  }
-
-  async function sendToOCR(dataURL){
-    busy.classList.add('show');
-    try{
-      const res = await fetch(OCR_ENDPOINT, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ image: dataURL })
-      });
-      const json = await res.json();
-      if(!json.ok && !json.entries) throw new Error(json.error || 'OCR error');
-      const entries = json.entries || [];
-      for (const e of entries) await saveEntry(e.name, e.amount);
-      if(entries.length) toast(`Записани редове: ${entries.length}`);
-      if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value)}
-    }catch(err){
-      console.error(err); toast('OCR неуспешен'); 
-    }finally{
-      busy.classList.remove('show');
+  /* ===== Обработка на изображението (премахва сини линии) ===== */
+  function prepImageForOCR(src){
+    const dpr=window.devicePixelRatio||1;
+    const scale=3;
+    const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
+    const out=document.createElement('canvas'); out.width=w; out.height=h;
+    const o=out.getContext('2d',{willReadFrequently:true});
+    o.drawImage(src,0,0,w,h);
+    let img=o.getImageData(0,0,w,h), d=img.data;
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i], g=d[i+1], b=d[i+2];
+      const bright=r+g+b;
+      const isInk = bright>680;                 // бяло мастило
+      const isBlue = b>60 && b>r+20 && b>g+10;  // сини линии
+      let v;
+      if(isInk) v=0; else if(isBlue) v=255; else v=255;
+      d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
     }
+    o.putImageData(img,0,0);
+    // лек локален праг
+    const g=o.getImageData(0,0,w,h); const G=g.data;
+    for(let y=1;y<h-1;y++){
+      for(let x=1;x<w-1;x++){
+        let s=0,c=0;
+        for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const i=((y+yy)*w+(x+xx))*4; s+=G[i]; c++;}
+        const i=(y*w+x)*4; const mean=s/c;
+        const v=G[i]<mean-15?0:255; G[i]=G[i+1]=G[i+2]=v; G[i+3]=255;
+      }
+    }
+    o.putImageData(g,0,0);
+    return out;
   }
 
+  /* ===== Парсване "Име - сума" (само кирилица) ===== */
+  function parseBulgarian(text){
+    const norm=(s)=>s.normalize('NFC').replace(/[–—−]/g,'-');
+    const lines = norm(text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const nameRe = String.raw`[\p{Script=Cyrillic}\s'’.()-]{2,50}`;
+    const rx = new RegExp(`(${nameRe})\\s*[-=:]\\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)`,'gu');
+    const out=[];
+    for(const raw of lines){
+      let m; while((m=rx.exec(raw))!==null){
+        const name=m[1].replace(/[^\p{Script=Cyrillic}\s'’.()-]/gu,' ').replace(/\s+/g,' ').trim();
+        const amt=parseFloat(String(m[2]).replace(',', '.'));
+        if(name && Number.isFinite(amt)) out.push({name,amount:+amt.toFixed(2)});
+      }
+    }
+    return out;
+  }
+
+  /* ===== Cloud Run OCR ===== */
+  async function blobToBase64(blob){
+    return new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(blob);});
+  }
+  async function ocrViaCloudRun(srcCanvas){
+    if(!OCR_URL) throw new Error('NO_CLOUD');
+    const pngBlob = await new Promise(r=>srcCanvas.toBlob(r,'image/png',1));
+    const b64 = await blobToBase64(pngBlob);
+    const res = await fetch(OCR_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image: b64 }) });
+    if(!res.ok) throw new Error('Cloud OCR error');
+    const data = await res.json();
+    if (Array.isArray(data.entries)) return data.entries;
+    if (data.text) return parseBulgarian(data.text);
+    return [];
+  }
+
+  /* ===== Tesseract fallback (само bul) ===== */
+  async function ocrViaTesseract(srcCanvas){
+    const worker = await Tesseract.createWorker('bul').catch(async ()=>{
+      const w = await Tesseract.createWorker({logger:()=>{}});
+      await w.load(); await w.loadLanguage('bul'); await w.initialize('bul'); return w;
+    });
+    await worker.setParameters({
+      tessedit_pageseg_mode: '6',
+      preserve_interword_spaces: '1',
+      tessedit_char_whitelist:
+        "абвгдежзийклмнопрстуфхцчшщъьюяАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ0123456789-., '="
+    });
+    const img = prepImageForOCR(srcCanvas);
+    const { data:{ text } } = await worker.recognize(img);
+    await worker.terminate();
+    return parseBulgarian(text||'');
+  }
+
+  /* ===== Запази (PNG + OCR във фона + нов лист) ===== */
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
       btnSave.disabled=true;
-      // 1) снимка за теб
-      const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-      a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
-      document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // 2) вземаме копие за OCR (преди да изчистим)
-      const dataURL = canvasToDataURL();
-
-      // 3) веднага нов лист за да можеш да пишеш
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-
-      // 4) OCR в бекграунд (не блокира писането)
-      sendToOCR(dataURL);
-    }catch(err){
-      console.error(err); toast('Грешка при „Запази“');
-    }finally{
-      btnSave.disabled=false;
-    }
-  };
-
-  (async()=>{await refreshSuggestions()})();
-});
-</script>
-</body>
-</html>
+      // 1) снимка и автоматично сваляне
+      const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png
