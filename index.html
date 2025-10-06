@@ -5,10 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>Veresia</title>
 <style>
-  :root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc}
-  html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
-  .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
-  .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
+  :root{--bg:#0c0f14;--line:#1b2e4f;--ink:#f8fafc}
+  html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;
+    font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
+  .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;
+    padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);
+    border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
+  .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;
+    background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
   .sep{flex:1}
@@ -60,6 +64,7 @@
 
   <div id="toast" class="toast"></div>
 
+  <!-- Tesseract.js -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <script>
@@ -72,6 +77,7 @@ r.onsuccess=()=>{const tx=r.result.transaction(STORE,mode);const s=tx.objectStor
 Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
 const idb={get:k=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
            set:(k,v)=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+           del:(k)=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.delete(k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
            iterate:(cb)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))};
 
 /* ===== UI / Canvas ===== */
@@ -80,109 +86,155 @@ window.addEventListener('DOMContentLoaded',()=>{
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   let drawing=false,last=null;
 
-  function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
+  function safeResize(){
+    // запази текущото съдържание (за да не се губи при панел/ориентация)
+    let bmpPromise = window.createImageBitmap ? createImageBitmap(canvas) : Promise.resolve(null);
+    const dpr=window.devicePixelRatio||1;
+    const rect=canvas.getBoundingClientRect();
+    const newW=Math.max(1,Math.floor(rect.width*dpr));
+    const newH=Math.max(1,Math.floor(rect.height*dpr));
+    if(canvas.width===newW && canvas.height===newH) return; // няма нужда
+    bmpPromise.then(bmp=>{
+      canvas.width=newW; canvas.height=newH;
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.lineJoin='round';ctx.lineCap='round';
+      ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
+      if(bmp){ ctx.drawImage(bmp,0,0,canvas.width/dpr,canvas.height/dpr); if(bmp.close) bmp.close(); }
+      // след resize – възстанови и черновата
+      saveDraft();
+    });
+  }
+  function initSize(){ // първоначален размер
+    const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
     canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineJoin='round';ctx.lineCap='round';ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';}
-  window.addEventListener('resize',resize,{passive:true});
-  window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
-  resize();
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.lineJoin='round';ctx.lineCap='round';
+    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
+  }
+  initSize();
+  window.addEventListener('resize',safeResize,{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(safeResize,80),{passive:true});
 
+  // Само стилус
   const isPen=e=>e.pointerType==='pen';
   const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
+  canvas.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+  canvas.addEventListener('touchmove', e=>e.preventDefault(),{passive:false});
 
   canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
   canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
-  const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
+  const stop=()=>{if(drawing) saveDraft(); drawing=false; last=null};
+  canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
+
+  // Чернова (autosave) – за да не се губи рисунката
+  const DRAFT_KEY='veresia-draft';
+  function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, canvas.toDataURL('image/png')); }catch{} }
+  (function restoreDraft(){ const d=localStorage.getItem(DRAFT_KEY); if(!d) return;
+    const img=new Image(); img.onload=()=>{ctx.drawImage(img,0,0,canvas.width/(window.devicePixelRatio||1),canvas.height/(window.devicePixelRatio||1));}; img.src=d;
+  })();
 
   const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
   function toast(m,ms=2200){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
   const step=t=>{hint.textContent=t};
 
-  async function saveEntry(name,amount){const key=name.trim().toLowerCase();const prev=await idb.get(key)||{name,total:0,items:[]};prev.total=+(prev.total+amount).toFixed(2);prev.items.push({amount,ts:Date.now()});await idb.set(key,prev)}
+  async function saveEntry(name,amount){
+    const key=name.trim().toLowerCase();
+    const prev=await idb.get(key)||{name: name.trim(), total:0, items:[]};
+    prev.total=+(prev.total+amount).toFixed(2);
+    prev.items.push({amount,ts:Date.now()});
+    await idb.set(key,prev);
+  }
   async function allEntries(){const rows=[];await idb.iterate(v=>rows.push(v));rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));return rows}
 
   const panel=document.getElementById('searchPanel');const btnSearch=document.getElementById('btnSearch');
   const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
 
-  btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
+  btnSearch.onclick=async()=>{panel.classList.toggle('open'); safeResize(); if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
   async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
   async function renderSearch(term){const t=(term||'').trim().toLowerCase();const rows=await allEntries();const hit=rows.filter(r=>r.name.toLowerCase().includes(t));let s=0;rowsEl.innerHTML='';hit.forEach(r=>{s+=r.total;const d=document.createElement('div');d.innerHTML=`<span>${r.name}</span><strong>${r.total.toFixed(2)} лв</strong>`;rowsEl.appendChild(d)});sumEl.textContent=`${s.toFixed(2)} лв`;}
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  /* ===== Подготовка за OCR (по-агресивна) ===== */
+  /* ===== OCR подготовка и пост-обработка ===== */
+  function lat2cyr(s){
+    const map={'A':'А','a':'а','B':'В','E':'Е','e':'е','K':'К','M':'М','H':'Н','O':'О','o':'о','P':'Р','C':'С','c':'с','T':'Т','X':'Х','x':'х','Y':'У','y':'у'};
+    return s.replace(/[ABEKMHOPCTXYabekmhopctxyo]/g,ch=>map[ch]||ch);
+  }
+  function fixDigits(tok){
+    return tok
+      .replace(/[oO]/g,'0').replace(/[sS]/g,'5').replace(/[ilI\|]/g,'1')
+      .replace(/Z/g,'2').replace(/B/g,'8').replace(/g/g,'9');
+  }
   function prepImageForOCR(src){
-    const dpr=window.devicePixelRatio||1;
-    const scale=3; // по-силно скалиране
+    const dpr=window.devicePixelRatio||1; const scale=3;
     const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
     const out=document.createElement('canvas'); out.width=w; out.height=h;
     const o=out.getContext('2d',{willReadFrequently:true});
     o.drawImage(src,0,0,w,h);
     let img=o.getImageData(0,0,w,h), d=img.data;
-
-    // 1) Премахни сините линии / фон -> бяло
+    // махни линии/фон; подчертаване на бели линии (мастило)
     for(let i=0;i<d.length;i+=4){
       const r=d[i], g=d[i+1], b=d[i+2];
       const bright=r+g+b;
-      const isInk = bright>680;                 // бяло мастило
-      const isBlue = b>60 && b>r+20 && b>g+10;  // линии
-      let v;
-      if(isInk) v=0; else if(isBlue) v=255; else v=255;
+      const isInk = bright>680;                 // белият “маркер”
+      const isBlue = b>60 && b>r+20 && b>g+10;  // сини линии
+      let v; if(isInk) v=0; else if(isBlue) v=255; else v=255;
       d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
     }
     o.putImageData(img,0,0);
-
-    // 2) Леко замъгляване + адаптивен праг (проста локална бинаризация)
+    // адаптивна бинаризация (прост локален праг + леко “удебеляване”)
     const g=o.getImageData(0,0,w,h); const G=g.data;
-    // бокс-блър 1px
     for(let y=1;y<h-1;y++){
       for(let x=1;x<w-1;x++){
-        let s=0,c=0;
-        for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const i=((y+yy)*w+(x+xx))*4; s+=G[i]; c++;}
-        const i=(y*w+x)*4; const mean=s/c;
-        const v=G[i]<mean-15?0:255; G[i]=G[i+1]=G[i+2]=v; G[i+3]=255;
+        let s=0,c=0; for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const i=((y+yy)*w+(x+xx))*4; s+=G[i]; c++;}
+        const i=(y*w+x)*4; const mean=s/c; const v=G[i]<mean-15?0:255; G[i]=G[i+1]=G[i+2]=v; G[i+3]=255;
       }
     }
     o.putImageData(g,0,0);
     return out;
   }
-
   function parseLines(text){
-    // взимаме и възможни много срещания в един ред
     const results=[];
-    const norm=(s)=>s.normalize('NFC').replace(/[–—−]/g,'-'); // нормализирай тирета
-    const lines = norm(text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-
-    const rxGlobal=/([A-Za-zА-Яа-яЁёЇїІіЄєЪъЬьҐґЩщЧчЮюЯяЙйЁёЪъЬьЩщШшЦцЖжЍѝЉљЊњЋћЏџ\s'’.\-]{2,50})\s*[-=:]\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/gu;
-    for (const raw of lines){
-      let m; while((m=rxGlobal.exec(raw))!==null){
+    const norm=s=>lat2cyr((s||'').normalize('NFC')).replace(/[–—−]/g,'-');
+    const lines=norm(text).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const rx=/([А-Яа-яA-Za-z'’.\-\s]{2,50})\s*[-=:]\s*([0-9OIlSgZB.,]{1,6})/gu;
+    for(const raw of lines){
+      let m; while((m=rx.exec(raw))!==null){
         const name=m[1].replace(/[^\p{L}\s'’.-]/gu,' ').replace(/\s+/g,' ').trim();
-        const amt = parseFloat(String(m[2]).replace(',', '.'));
-        if(name && isFinite(amt)) results.push({name, amount:+amt.toFixed(2)});
+        const amtTok=fixDigits(String(m[2])).replace(',', '.');
+        const amt=parseFloat(amtTok);
+        if(name && isFinite(amt)) results.push({name,amount:+amt.toFixed(2)});
       }
     }
     return results;
   }
-
   async function ocrCanvas(){
     step('OCR: зареждане…');
     let worker;
     try{
-      worker = await Tesseract.createWorker('bul+eng');
+      // опит за „best“ данни
+      worker=await Tesseract.createWorker({
+        langPath:'https://tessdata.projectnaptha.com/5',
+        gzip:false,
+      });
+      await worker.loadLanguage('bul');
     }catch(e){
-      worker = await Tesseract.createWorker({ logger:()=>{} });
-      await worker.load(); await worker.loadLanguage('bul+eng'); await worker.initialize('bul+eng');
+      // fallback
+      worker=await Tesseract.createWorker();
+      await worker.loadLanguage('bul');
     }
+    await worker.initialize('bul');
     await worker.setParameters({
       tessedit_pageseg_mode: '6',
       preserve_interword_spaces: '1',
+      user_defined_dpi:'300',
+      load_system_dawg:'F', load_freq_dawg:'F',
       tessedit_char_whitelist:
-        "абвгдежзийклмнопрстуфхцчшщъьюяАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ" +
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-–—., '="
+        "абвгдежзийклмнопрстуфхцчшщъьюяАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ0123456789-.,=: '’"
     });
 
     step('OCR: обработка…');
-    const img = prepImageForOCR(canvas);
-    const { data:{ text } } = await worker.recognize(img);
+    const img=prepImageForOCR(canvas);
+    const {data:{text}}=await worker.recognize(img);
     await worker.terminate();
     return parseLines(text||'');
   }
@@ -199,14 +251,15 @@ window.addEventListener('DOMContentLoaded',()=>{
       step('OCR…');
       const entries=await ocrCanvas();
       if(entries.length){
-        step('База…');
         for(const e of entries) await saveEntry(e.name,e.amount);
         toast(`Записани редове: ${entries.length}`);
       }else{
         toast('Не открих „Име - сума“. Пример: Иван - 3,20');
       }
 
+      // нов лист
       ctx.clearRect(0,0,canvas.width,canvas.height);
+      localStorage.removeItem('veresia-draft');
       step('Готово');
       if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value)}
     }catch(err){console.error(err);toast('Грешка при „Запази“');step('Грешка')}
