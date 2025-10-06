@@ -1,0 +1,10 @@
+{
+  "name": "veresia-ocr-fn",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "@google-cloud/vision": "^4.3.2",
+    "cors": "^2.8.5"
+  }
+}
