@@ -6,48 +6,43 @@
 <title>Veresia</title>
 <style>
   :root{
-    --bg:#0e1620; --line:#16345a; --ink:#f8fafc; --ui:#111827; --ui2:#1f2937; --accent:#22c55e;
-    --muted:#9ca3af;
+    --bg:#0e1620; --line:#16345a; --ink:#f8fafc; --ui:#0b1220; --ui2:#1f2937; --accent:#22c55e; --muted:#9ca3af;
   }
   html,body{height:100%;margin:0;background:var(--bg);color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-  .bar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:linear-gradient(#0b1220cc,#0b1220cc);backdrop-filter:saturate(1.2) blur(6px);z-index:20}
-  .bar h1{margin:0;font-size:1rem;opacity:.9}
-  .btn{appearance:none;border:1px solid #374151;background:var(--ui2);color:#e5e7eb;border-radius:.5rem;padding:.5rem .8rem;font-weight:600;cursor:pointer}
-  .btn:hover{background:#2b3647}
+  /* старият бар – семпъл */
+  .bar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:#0b1220e0;backdrop-filter:blur(4px);z-index:10}
+  .bar h1{margin:0 .5rem 0 0;font-size:1rem;opacity:.9}
+  .btn{appearance:none;border:1px solid #374151;background:var(--ui2);color:#e5e7eb;border-radius:.5rem;padding:.45rem .8rem;font-weight:600;cursor:pointer}
   .btn.primary{border-color:#16a34a;background:#16a34a;color:#07130a}
   .status{margin-left:auto;font-size:.9rem;color:var(--muted)}
-  .wrap{position:fixed;inset:44px 0 0 0;display:grid}
+  .wrap{position:fixed;inset:44px 0 0 0}
   /* ruled paper */
-  canvas{background:
+  canvas{
+    background:
       repeating-linear-gradient( to bottom,
         transparent 0 34px, var(--line) 34px 35px),
       linear-gradient(var(--bg),var(--bg));
-    touch-action:none; /* изключва скрол по време на писалка */
+    touch-action: none; /* но няма да блокираме извън платното */
+    display:block; width:100%; height:100%;
   }
-  /* Search panel */
-  .panel{
-    position:fixed;top:52px;right:.75rem;width:min(420px,calc(100vw - 1.5rem));
-    background:var(--ui);border:1px solid #334155;border-radius:.75rem;box-shadow:0 10px 30px #0006;
-    padding:.9rem;display:none;z-index:30
-  }
+  /* търсене панел (както преди – малък) */
+  .panel{position:fixed;top:52px;right:.75rem;background:#0b1220;border:1px solid #334155;border-radius:.5rem;padding:.7rem;display:none;z-index:20;width:min(380px,calc(100vw - 1.5rem))}
   .panel.open{display:block}
-  .row{display:flex;gap:.5rem;align-items:center;margin:.5rem 0}
-  input[type="text"]{flex:1;appearance:none;background:#0b1220;border:1px solid #334155;border-radius:.5rem;color:#e5e7eb;padding:.55rem .7rem}
+  .row{display:flex;gap:.5rem;align-items:center}
+  input[type="text"]{flex:1;background:#0a1324;border:1px solid #334155;border-radius:.5rem;color:#e5e7eb;padding:.5rem .6rem}
   .muted{color:var(--muted);font-size:.9rem}
-  .pill{display:inline-block;border:1px solid #334155;border-radius:999px;padding:.15rem .5rem;margin-left:.5rem}
+  .pill{display:inline-block;border:1px solid #334155;border-radius:999px;padding:.1rem .5rem;margin-left:.4rem}
 </style>
 </head>
 <body>
   <div class="bar">
     <h1>Veresia</h1>
-    <button id="saveBtn" class="btn primary">Запази</button>
+    <button id="saveBtn"   class="btn primary">Запази</button>
     <button id="searchBtn" class="btn">Търсене</button>
     <div class="status" id="status">OCR: готов</div>
   </div>
 
-  <div class="wrap">
-    <canvas id="pad"></canvas>
-  </div>
+  <div class="wrap"><canvas id="pad"></canvas></div>
 
   <div id="searchPanel" class="panel" role="dialog" aria-modal="true">
     <div class="row">
@@ -55,246 +50,124 @@
       <datalist id="namesList"></datalist>
       <button id="doSearch" class="btn">Търси</button>
     </div>
-    <div id="result" class="muted">Няма резултат.</div>
+    <div id="result" class="muted" style="margin-top:.6rem">Няма резултат.</div>
   </div>
 
 <script>
-/* ========= DPI & Canvas ========= */
+/* ===== Canvas DPI и фон ===== */
 const canvas = document.getElementById('pad');
-const ctx = canvas.getContext('2d', { alpha:false, desynchronized:true, willReadFrequently:true });
-let dpi = window.devicePixelRatio || 1;
-function resizeCanvas(){
-  const rect = canvas.getBoundingClientRect();
-  canvas.width  = Math.round(rect.width  * dpi);
-  canvas.height = Math.round((window.innerHeight - 44) * dpi);
-  canvas.style.width  = '100%';
-  canvas.style.height = (window.innerHeight - 44) + 'px';
-  ctx.lineCap='round'; ctx.lineJoin='round';
-  ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
-  ctx.lineWidth=6 * dpi;
-  redrawBg();
+const ctx = canvas.getContext('2d',{alpha:false,desynchronized:true,willReadFrequently:true});
+let dpi = Math.max(1, window.devicePixelRatio || 1);
+function resize(){
+  const w = Math.round(innerWidth  * dpi);
+  const h = Math.round((innerHeight - 44) * dpi);
+  if(canvas.width===w && canvas.height===h) return;
+  canvas.width=w; canvas.height=h;
+  ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#f8fafc'; ctx.lineWidth=6*dpi;
 }
-function redrawBg(){
-  // фонът е в CSS; нищо специално тук
-}
+addEventListener('resize', resize, {passive:true}); resize();
 
-/* ========= Ink engine (only stylus) ========= */
-let drawing=false, pts=[], lastRect=null;
+/* ===== Писане (позволяваме стилус и „touch със стилус“) ===== */
+let drawing=false, rect=null, last=null, pts=[];
+function isStylusLike(e){
+  // приемаме pen ИЛИ touch с pressure/tilt/бутон (някои Android стилуси са така)
+  return e.pointerType==='pen' || (e.pointerType==='touch' && (e.pressure>0 || e.tiltX || e.tiltY));
+}
 canvas.addEventListener('pointerdown', e=>{
-  if(e.pointerType!=='pen') return; // само химикал
+  if(!isStylusLike(e)) return;
   e.preventDefault(); canvas.setPointerCapture(e.pointerId);
-  drawing=true; pts=[[e.clientX,e.clientY,e.pressure,performance.now()]];
-  lastRect = canvas.getBoundingClientRect();
-  strokeTo(e);
+  rect = canvas.getBoundingClientRect(); drawing=true;
+  const x=(e.clientX-rect.left)*dpi, y=(e.clientY-rect.top)*dpi;
+  const p=Math.max(0.15, e.pressure||0.7);
+  last=[x,y,p]; pts=[[x,y,p,performance.now()]];
 });
 canvas.addEventListener('pointermove', e=>{
-  if(!drawing || e.pointerType!=='pen') return;
-  strokeTo(e);
+  if(!drawing || !isStylusLike(e)) return;
+  const x=(e.clientX-rect.left)*dpi, y=(e.clientY-rect.top)*dpi;
+  const p=Math.max(0.15, e.pressure||0.7);
+  ctx.lineWidth=6*dpi*p; ctx.beginPath(); ctx.moveTo(last[0],last[1]); ctx.lineTo(x,y); ctx.stroke();
+  last=[x,y,p]; pts.push([x,y,p,performance.now()]);
 });
-canvas.addEventListener('pointerup', e=>{
-  if(!drawing) return;
-  drawing=false; canvas.releasePointerCapture(e.pointerId);
-  // проста детекция за права линия (hook за „зачертаване“)
-  maybeStrikeDelete(pts);
-});
-function strokeTo(e){
-  // корекция на офсета (без 2см изоставане)
-  const x = (e.clientX - lastRect.left) * dpi;
-  const y = (e.clientY - lastRect.top ) * dpi;
-  const p = Math.max(0.15, e.pressure||0.7);
-  const last = pts[pts.length-1];
-  pts.push([x,y,p,performance.now()]);
-  if(last){
-    ctx.lineWidth = 6 * dpi * p;
-    ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(x,y); ctx.stroke();
-  }
-}
+canvas.addEventListener('pointerup', e=>{ if(drawing){ drawing=false; canvas.releasePointerCapture(e.pointerId); maybeStrike(pts); pts=[]; }});
 
-/* ========= Simple IndexedDB (без външни библиотеки) ========= */
-const DB = (()=>{
-  const DB_NAME='veresia_db', STORE='names';
-  let dbp=null;
-  function open(){
-    if(dbp) return dbp;
-    dbp = new Promise((res,rej)=>{
-      const req=indexedDB.open(DB_NAME,1);
-      req.onupgradeneeded=()=> req.result.createObjectStore(STORE);
-      req.onsuccess = ()=>res(req.result);
-      req.onerror = ()=>rej(req.error);
-    });
-    return dbp;
-  }
-  async function get(key){
-    const db=await open();
-    return new Promise((res,rej)=>{
-      const tx=db.transaction(STORE,'readonly').objectStore(STORE).get(key.toLowerCase());
-      tx.onsuccess=()=>res(tx.result); tx.onerror=()=>rej(tx.error);
-    });
-  }
-  async function set(key,val){
-    const db=await open();
-    return new Promise((res,rej)=>{
-      const tx=db.transaction(STORE,'readwrite').objectStore(STORE).put(val,key.toLowerCase());
-      tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
-    });
-  }
-  async function del(key){
-    const db=await open();
-    return new Promise((res,rej)=>{
-      const tx=db.transaction(STORE,'readwrite').objectStore(STORE).delete(key.toLowerCase());
-      tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
-    });
-  }
-  async function keys(){
-    const db=await open(); const out=[];
-    return new Promise((res,rej)=>{
-      const tx=db.transaction(STORE,'readonly').objectStore(STORE).openKeyCursor();
-      tx.onsuccess=e=>{
-        const c=e.target.result; if(c){ out.push(c.key); c.continue(); } else res(out);
-      };
-      tx.onerror=()=>rej(tx.error);
-    });
-  }
-  return {get,set,del,keys};
+/* ===== Локална IndexedDB без външни библиотеки ===== */
+const DB=(()=>{
+  const NAME='veresia_db', STORE='names'; let dbp;
+  function open(){ if(dbp) return dbp; dbp=new Promise((res,rej)=>{const r=indexedDB.open(NAME,1); r.onupgradeneeded=()=>r.result.createObjectStore(STORE); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);}); return dbp;}
+  async function get(k){const db=await open(); return new Promise((res,rej)=>{const t=db.transaction(STORE,'readonly').objectStore(STORE).get(k.toLowerCase()); t.onsuccess=()=>res(t.result); t.onerror=()=>rej(t.error);});}
+  async function set(k,v){const db=await open(); return new Promise((res,rej)=>{const t=db.transaction(STORE,'readwrite').objectStore(STORE).put(v,k.toLowerCase()); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error);});}
+  async function keys(){const db=await open(); const out=[]; return new Promise((res,rej)=>{const c=db.transaction(STORE,'readonly').objectStore(STORE).openKeyCursor(); c.onsuccess=e=>{const cur=e.target.result; if(cur){out.push(cur.key); cur.continue();} else res(out)}; c.onerror=()=>rej(c.error);});}
+  async function del(k){const db=await open(); return new Promise((res,rej)=>{const t=db.transaction(STORE,'readwrite').objectStore(STORE).delete(k.toLowerCase()); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error);});}
+  return {get,set,keys,del};
 })();
 
-/* ========= Tesseract worker (one-time) ========= */
-let worker=null, workerReady=false, ocrLoading=false;
+/* ===== OCR worker (НЕ БЛОКИРА) ===== */
 const statusEl=document.getElementById('status');
-async function ensureWorker(){
-  if(workerReady || ocrLoading) return;
-  ocrLoading=true; setStatus('OCR: зареждане…');
-  const T = await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', 'Tesseract');
-  worker = await T.createWorker({
-    logger:m=>{ if(m?.status==='loading tesseract core') setStatus('OCR: ядро…');
-                if(m?.status==='initializing tesseract') setStatus('OCR: инициализация…');
-                if(m?.status==='loading language traineddata') setStatus(`OCR: език… ${Math.round((m.progress||0)*100)}%`); },
-    workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-    corePath  :'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/dist/tesseract-core.wasm.js',
-    langPath  :'https://tessdata.projectnaptha.com/4.0.0_fast'
-  });
-  await worker.load();
-  await worker.loadLanguage('bul+eng');
-  await worker.initialize('bul+eng');
-  workerReady=true; ocrLoading=false; setStatus('OCR: готов');
-}
-function setStatus(t){ statusEl.textContent=t; }
-function loadScript(src, globalName){
-  return new Promise((res,rej)=>{
-    if(globalName && window[globalName]) return res(window[globalName]);
-    const s=document.createElement('script'); s.src=src; s.async=true;
-    s.onload=()=>res(window[globalName]); s.onerror=()=>rej(new Error('load '+src));
-    document.head.appendChild(s);
-  });
-}
-
-/* ========= Save flow ========= */
-async function saveAll(){
-  // 1) snapshot → blob
-  const png = await canvasToBlob(canvas);
-  // 2) OCR (с таймаут и graceful fallback)
-  let found=[];
+let worker=null, workerReady=false, loading=false;
+function setStatus(s){ statusEl.textContent=s; }
+async function ensureWorkerLazy(){
+  if(workerReady || loading) return;
+  loading=true; setStatus('OCR: зареждане…');
   try{
-    await ensureWorker();
-    setStatus('OCR: разпознаване…');
-    const text = await recognizeWithTimeout(png, 15000);
-    found = parseLines(text);
-    // запиши/натрупай в DB
-    for(const {name,amount} of found){
-      const prev = await DB.get(name) || 0;
-      await DB.set(name, +(prev + amount).toFixed(2));
-    }
-    setStatus(`OCR: готов • извлечени: ${found.length}`);
-  }catch(err){
-    console.warn(err);
-    setStatus('OCR: пропуснато (няма модел/таймаут)');
+    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js','Tesseract');
+    worker = await Tesseract.createWorker({
+      workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+      corePath  :'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/dist/tesseract-core.wasm.js',
+      langPath  :'https://tessdata.projectnaptha.com/4.0.0_fast',
+      logger:m=>{ if(m?.status==='loading language traineddata'){ setStatus(`OCR: зареждане ${Math.round((m.progress||0)*100)}%`);} }
+    });
+    await worker.load(); await worker.loadLanguage('bul+eng'); await worker.initialize('bul+eng');
+    workerReady=true; setStatus('OCR: готов');
+  }catch(e){ console.warn(e); setStatus('OCR: недостъпен'); }
+  finally{ loading=false; }
+}
+function loadScript(src, globalName){ return new Promise((res,rej)=>{ if(globalName && window[globalName]) return res(window[globalName]); const s=document.createElement('script'); s.src=src; s.async=true; s.onload=()=>res(window[globalName]); s.onerror=()=>rej(new Error('load '+src)); document.head.appendChild(s); });}
+
+/* ===== Запази: снимка → OCR (ако е готов) → DB → чистене ===== */
+document.getElementById('saveBtn').onclick=async ()=>{
+  // снимка
+  const blob = await new Promise(r=>canvas.toBlob(r,'image/png',0.92));
+  download(blob, `veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`);
+  // OCR ако е готов/след стартиране на зареждане на заден план
+  ensureWorkerLazy().catch(()=>{});
+  if(workerReady){
+    try{
+      setStatus('OCR: разпознаване…');
+      const {data:{text}} = await worker.recognize(blob,{tessedit_pageseg_mode:6});
+      const pairs = parseLines(text);
+      for(const {name,amount} of pairs){ const prev=await DB.get(name)||0; await DB.set(name, +(prev+amount).toFixed(2)); }
+      setStatus(`OCR: готов • ${pairs.length} реда`);
+    }catch(e){ console.warn(e); setStatus('OCR: грешка'); }
   }
-  // 3) свали PNG локално (може да го изключиш)
-  downloadBlob(png, `veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`);
-  // 4) Почисти платното сигурно
-  ctx.save();
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.restore();
-  redrawBg();
-  // 5) опресни списъка за autocomplete
-  populateNamesList();
-}
-function canvasToBlob(cnv){
-  return new Promise(res=> cnv.toBlob(b=>res(b),'image/png', 0.92));
-}
-async function recognizeWithTimeout(blob, ms){
-  const p = (async()=>{
-    const { data:{ text } } = await worker.recognize(blob, { tessedit_pageseg_mode:6 });
-    return text;
-  })();
-  const t = new Promise((_,rej)=> setTimeout(()=>rej(new Error('ocr timeout')), ms));
-  return Promise.race([p,t]);
-}
+  // чистене – винаги
+  ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.restore();
+};
 function parseLines(txt){
   const out=[]; if(!txt) return out;
-  // примерни редове: "Иван - 32,80", "Петър: 12.5", "Мария — 18"
-  const re = /^\s*([A-Za-zА-Яа-яЁёІіЇїЙйЪъЬь\- ]{2,})\s*[-–—:]\s*([0-9]+(?:[.,][0-9]{1,2})?)/gm;
-  let m;
-  while((m=re.exec(txt))!==null){
-    let name=m[1].trim().replace(/\s+/g,' ');
-    let amount=parseFloat(String(m[2]).replace(',','.'));
-    if(Number.isFinite(amount) && name) out.push({name,amount});
-  }
+  const re=/^\s*([A-Za-zА-Яа-яЁёІіЇїЙйЪъЬь\- ]{2,})\s*[-–—:]\s*([0-9]+(?:[.,][0-9]{1,2})?)/gm;
+  let m; while((m=re.exec(txt))){ const name=m[1].trim().replace(/\s+/g,' '); const amount=parseFloat(String(m[2]).replace(',','.')); if(name && Number.isFinite(amount)) out.push({name,amount}); }
   return out;
 }
-function downloadBlob(blob, filename){
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=filename; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-}
+function download(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),3e3); }
 
-/* ========= Search panel ========= */
+/* ===== Търсене ===== */
 const panel=document.getElementById('searchPanel');
-document.getElementById('searchBtn').onclick=()=>{
-  panel.classList.toggle('open'); populateNamesList();
-};
-document.getElementById('doSearch').onclick=search;
-document.getElementById('q').addEventListener('keydown',e=>{ if(e.key==='Enter') search(); });
+document.getElementById('searchBtn').onclick=()=>{ panel.classList.toggle('open'); fillNames(); };
+document.getElementById('doSearch').onclick=doSearch;
+document.getElementById('q').addEventListener('keydown',e=>{ if(e.key==='Enter') doSearch(); });
+async function fillNames(){ const names=(await DB.keys()).sort((a,b)=>a.localeCompare(b,'bg')); const dl=document.getElementById('namesList'); dl.innerHTML=names.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join(''); }
+async function doSearch(){ const q=document.getElementById('q').value.trim().toLowerCase(); const el=document.getElementById('result'); if(!q){el.textContent='Въведи име.';return;} const v=await DB.get(q); el.innerHTML = v==null ? 'Няма такъв запис.' : `<b>${q}</b> → <span class="pill">${v.toFixed(2)} лв</span>`; }
 
-async function populateNamesList(){
-  const names = (await DB.keys()).sort((a,b)=>a.localeCompare(b,'bg'));
-  const dl=document.getElementById('namesList');
-  dl.innerHTML = names.map(n=>`<option value="${escapeHtml(n)}">`).join('');
-}
-async function search(){
-  const q=document.getElementById('q').value.trim().toLowerCase();
-  const resEl=document.getElementById('result');
-  if(!q){ resEl.textContent='Въведи име.'; return; }
-  const val = await DB.get(q);
-  if(val==null){ resEl.textContent='Няма такъв запис.'; return; }
-  resEl.innerHTML = `<b>${escapeHtml(q)}</b> → <span class="pill">${val.toFixed(2)} лв</span>`;
-}
-function escapeHtml(s){ return s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-
-/* ========= Strike-through hook (детекция на права линия) ========= */
-function maybeStrikeDelete(points){
-  // груба детекция – права хоризонтална линия
+/* ===== Hook за зачеркване (само лог за сега) ===== */
+function maybeStrike(points){
   if(points.length<2) return;
   const [x1,y1]=points[0], [x2,y2]=points[points.length-1];
-  const dx=x2-x1, dy=y2-y1; const len=Math.hypot(dx,dy);
-  const angle=Math.abs(Math.atan2(dy,dx))*180/Math.PI;
-  const straight = len > 200*dpi && (angle<12 || angle>168);
-  if(!straight) return;
-  // TODO: тук ще добавим OCR върху тесен изрязан регион и ще трием името от DB, ако се разпознае.
-  console.log('Strike detected – ще го вържем с триене след като финализираме OCR.');
+  const len=Math.hypot(x2-x1,y2-y1), ang=Math.abs(Math.atan2(y2-y1,x2-x1))*180/Math.PI;
+  if(len>200*dpi && (ang<12 || ang>168)) console.log('Strike line — ще вържем триене след като финализираме OCR.');
 }
 
-/* ========= Wire up ========= */
-document.getElementById('saveBtn').onclick=()=>{ saveAll().catch(e=>{console.error(e); setStatus('Грешка при „Запази“');}); };
-
-resizeCanvas(); addEventListener('resize', resizeCanvas, {passive:true});
-
-/* Първоначално зареди списъка с имена */
-populateNamesList();
-
-/* Леко подгряване на OCR след 1.5s за да се кешира моделът */
-setTimeout(()=>ensureWorker().catch(()=>{}), 1500);
+/* първоначално – НЕ блокира, но подгрява OCR на заден план */
+setTimeout(()=>ensureWorkerLazy().catch(()=>{}), 1200);
 </script>
 </body>
 </html>
