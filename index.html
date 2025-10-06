@@ -105,6 +105,7 @@ window.addEventListener('DOMContentLoaded', () => {
     ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
   }
   window.addEventListener('resize', resize, {passive:true});
+  window.addEventListener('orientationchange', ()=>setTimeout(resize, 50), {passive:true});
   resize();
 
   const isPen = (e)=> e.pointerType === 'pen';
@@ -154,6 +155,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   btnSearch.onclick = async ()=>{
     panel.classList.toggle('open');
+    resize();                       // <-- фиксира „изоставащата“ писалка при toggle
     if(panel.classList.contains('open')){
       await refreshSuggestions();
       renderSearch(q.value);
@@ -179,6 +181,37 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   q.addEventListener('input', ()=> renderSearch(q.value));
 
+  /* ---- Подготовка на изображението за OCR ----
+     - премахваме сини линии
+     - обръщаме към черно на бяло
+     - скалираме ~2x за по-добро разпознаване
+  */
+  function prepImageForOCR(srcCanvas){
+    const dpr = window.devicePixelRatio || 1;
+    const scale = 2;
+    const w = Math.floor(srcCanvas.width/dpr*scale);
+    const h = Math.floor(srcCanvas.height/dpr*scale);
+    const out = document.createElement('canvas');
+    out.width=w; out.height=h;
+    const octx=out.getContext('2d',{willReadFrequently:true});
+    octx.drawImage(srcCanvas,0,0,w,h);
+    const img = octx.getImageData(0,0,w,h);
+    const d = img.data;
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i], g=d[i+1], b=d[i+2];
+      const bright = r+g+b;                 // бяло мастило ≈ много ярко
+      const isInk = bright > 680;           // бялото писане
+      const isBlueLine = b>50 && b>r+20 && b>g+10; // премахни линиите
+      let v;
+      if (isInk) v=0;            // черно мастило
+      else if (isBlueLine) v=255; // махни линията
+      else v=255;                // фон бял
+      d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+    }
+    octx.putImageData(img,0,0);
+    return out;
+  }
+
   /* OCR parse */
   function parseLines(text){
     const out=[]; const lines=(text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
@@ -202,14 +235,13 @@ window.addEventListener('DOMContentLoaded', () => {
       await worker.load(); await worker.loadLanguage('bul+eng'); await worker.initialize('bul+eng');
     }
     step('OCR: разпознаване…');
-    const blob = await new Promise(res=> canvas.toBlob(b=>res(b),'image/png'));
-    const url = URL.createObjectURL(blob);
-    const { data:{ text } } = await worker.recognize(url);
-    await worker.terminate(); URL.revokeObjectURL(url);
+    const prep = prepImageForOCR(canvas);
+    const { data:{ text } } = await worker.recognize(prep);
+    await worker.terminate();
     return parseLines(text||'');
   }
 
-  /* Запази */
+  /* Запази: снимка + OCR запис + изчистване */
   const btnSave = document.getElementById('btnSave');
   btnSave.onclick = async ()=>{
     try{
