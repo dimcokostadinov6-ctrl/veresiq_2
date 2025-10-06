@@ -5,17 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Veresia</title>
 <style>
-  :root{
-    --bg:#0e1116;
-    --line:#1e3558;
-    --ink:#f3f4f6;
-  }
+  :root{--bg:#0e1116;--line:#1e3558;--ink:#f3f4f6}
   html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
-  .topbar{
-    position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;
-    padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);
-    border-bottom:1px solid rgba(255,255,255,.06);z-index:5
-  }
+  .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
   .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
@@ -68,13 +60,37 @@
 
   <div id="toast" class="toast"></div>
 
-  <!-- OCR + IndexedDB helpers -->
+  <!-- OCR -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/idb-keyval.iife.min.js"></script>
 
 <script>
+/* ===== Малък IndexedDB helper (без външни библиотеки) ===== */
+const DB_NAME='veresia-db', STORE='names', DB_VER=1;
+function withDB(mode, fn){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded=()=>{ const db=req.result; if(!db.objectStoreNames.contains(STORE)){ db.createObjectStore(STORE); } };
+    req.onerror=()=>reject(req.error);
+    req.onsuccess=()=>{
+      const db=req.result;
+      const tx=db.transaction(STORE, mode);
+      const store=tx.objectStore(STORE);
+      Promise.resolve(fn(store)).then(res=>{
+        tx.oncomplete=()=>resolve(res);
+        tx.onerror=()=>reject(tx.error);
+      },reject);
+    };
+  });
+}
+const idb = {
+  get:(key)=>withDB('readonly', s=> new Promise((res,rej)=>{ const r=s.get(key); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);})),
+  set:(key,val)=>withDB('readwrite', s=> new Promise((res,rej)=>{ const r=s.put(val,key); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error);})),
+  iterate:(cb)=>withDB('readonly', s=> new Promise((res,rej)=>{ const r=s.openCursor(); r.onsuccess=()=>{ const cur=r.result; if(cur){ cb(cur.value, cur.key); cur.continue(); } else res(); }; r.onerror=()=>rej(r.error);})),
+  del:(key)=>withDB('readwrite', s=> new Promise((res,rej)=>{ const r=s.delete(key); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error);})),
+};
+
+/* ===== UI / Canvas ===== */
 window.addEventListener('DOMContentLoaded', () => {
-  /* ========== Canvas (само със стилус) ========== */
   const canvas = document.getElementById('board');
   const ctx = canvas.getContext('2d',{willReadFrequently:true});
   let drawing=false, last=null;
@@ -109,27 +125,26 @@ window.addEventListener('DOMContentLoaded', () => {
   canvas.addEventListener('pointercancel', stop);
   canvas.addEventListener('pointerleave', stop);
 
-  /* ========== Toast helper ========== */
+  /* Toast */
   const toastEl = document.getElementById('toast');
   const hint = document.getElementById('hint');
   function toast(msg, ms=2200){ toastEl.textContent=msg; toastEl.classList.add('show'); clearTimeout(toastEl._t); toastEl._t=setTimeout(()=>toastEl.classList.remove('show'), ms); }
   const step = (t)=>{ hint.textContent=t; };
 
-  /* ========== IndexedDB (names store) ========== */
-  const store = new idbKeyval.Store('veresia-db','names');
+  /* База */
   async function saveEntry(name, amount){
     const key = name.trim().toLowerCase();
-    const prev = await idbKeyval.get(key, store) || { name, total:0, items:[] };
+    const prev = await idb.get(key) || { name, total:0, items:[] };
     prev.total = +(prev.total + amount).toFixed(2);
     prev.items.push({ amount, ts: Date.now() });
-    await idbKeyval.set(key, prev, store);
+    await idb.set(key, prev);
   }
   async function allEntries(){
-    const rows=[]; await idbKeyval.iterate((v)=>rows.push(v), store);
+    const rows=[]; await idb.iterate(v=>rows.push(v));
     rows.sort((a,b)=>a.name.localeCompare(b.name,'bg')); return rows;
   }
 
-  /* ========== Търсене панел ========== */
+  /* Търсене */
   const panel = document.getElementById('searchPanel');
   const btnSearch = document.getElementById('btnSearch');
   const q = document.getElementById('q');
@@ -164,7 +179,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   q.addEventListener('input', ()=> renderSearch(q.value));
 
-  /* ========== OCR (Bulgarian) + парсване ========== */
+  /* OCR parse */
   function parseLines(text){
     const out=[]; const lines=(text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     for (let ln of lines){
@@ -177,18 +192,14 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     return out;
   }
-
   async function ocrCanvas(){
-    step('OCR: зареждане…'); 
+    step('OCR: зареждане…');
     let worker;
     try{
       worker = await Tesseract.createWorker('bul+eng');
     }catch(e){
-      // fallback за стари версии
       worker = await Tesseract.createWorker({ logger:()=>{} });
-      await worker.load();
-      await worker.loadLanguage('bul+eng');
-      await worker.initialize('bul+eng');
+      await worker.load(); await worker.loadLanguage('bul+eng'); await worker.initialize('bul+eng');
     }
     step('OCR: разпознаване…');
     const blob = await new Promise(res=> canvas.toBlob(b=>res(b),'image/png'));
@@ -198,7 +209,7 @@ window.addEventListener('DOMContentLoaded', () => {
     return parseLines(text||'');
   }
 
-  /* ========== Запази (3-в-1) ========== */
+  /* Запази */
   const btnSave = document.getElementById('btnSave');
   btnSave.onclick = async ()=>{
     try{
@@ -209,31 +220,26 @@ window.addEventListener('DOMContentLoaded', () => {
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0);
 
-      // 2) OCR + запис в база
+      // 2) OCR + запис
       const entries = await ocrCanvas();
       if (entries.length){
         step('Запис: база…');
         for (const e of entries) await saveEntry(e.name, e.amount);
         toast(`Записани редове: ${entries.length}`);
       } else {
-        toast('Не открих „Име - сума“. Напиши като: Георги - 7,20');
+        toast('Не открих „Име - сума“. Пример: Георги - 7,20');
       }
 
       // 3) изчистване
       ctx.clearRect(0,0,canvas.width,canvas.height);
       step('Готово');
-      // обнови панела
       if (panel.classList.contains('open')) { await refreshSuggestions(); renderSearch(q.value); }
     }catch(err){
-      console.error(err);
-      toast('Грешка при „Запази“.');
-      step('Грешка');
-    }finally{
-      btnSave.disabled=false;
-    }
+      console.error(err); toast('Грешка при „Запази“'); step('Грешка');
+    }finally{ btnSave.disabled=false; }
   };
 
-  // начално зареждане на предложенията (тихо)
+  // начално
   (async()=>{ await refreshSuggestions(); })();
 });
 </script>
