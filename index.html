@@ -21,7 +21,6 @@
         var(--bg) 0px, var(--bg) 26px,
         var(--line) 26px, var(--line) 27px);
   }
-  .pen-badge{position:fixed;right:.6rem;top:.6rem;z-index:6;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#0c1426;border:1px solid #223152}
   .panel{width:min(360px,92vw);background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;display:none}
   .panel.open{display:block}
   .panel h3{margin:.2rem 0 .6rem;font-weight:600}
@@ -33,6 +32,7 @@
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
+  .pen-badge{position:fixed;right:.6rem;top:.6rem;z-index:6;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#0c1426;border:1px solid #223152}
 </style>
 </head>
 <body>
@@ -41,7 +41,7 @@
     <button id="btnSave" class="btn primary">Запази</button>
     <div class="sep"></div>
     <button id="btnSearch" class="btn">Търсене</button>
-    <span id="hint" title="Пише се само със стилус">✍️ Само писалка</span>
+    <span id="hint">✍️ Само писалка</span>
   </div>
 
   <div class="pen-badge" title="Само писалка">🖊️</div>
@@ -63,106 +63,264 @@
 
   <div id="toast" class="toast"></div>
 
-<script>
-/* ====== НАСТРОЙКА: URL на Cloud Run OCR ====== */
-const OCR_BASE = "https://ocr-980985905017.europe-west1.run.app"; // <-- смени с твоя URL
+<script type="module">
+/* ====== НАСТРОЙКА ====== */
+const OCR_URL = 'https://ocr-980985905017.europe-west1.run.app/orc';
 
-/* ===== Мини IndexedDB ===== */
-const DB_NAME='veresia-db', STORE='names', DB_VER=1;
-function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
-r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);};
-r.onerror=()=>rej(r.error);
-r.onsuccess=()=>{const tx=r.result.transaction(STORE,mode);const s=tx.objectStore(STORE);
-Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
-const idb={get:k=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
-           set:(k,v)=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-           iterate:(cb)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))};
-
-/* ===== UI / Canvas ===== */
-window.addEventListener('DOMContentLoaded',()=>{
-  const canvas=document.getElementById('board');
-  const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  let drawing=false,last=null;
-
-  function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
-    canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineJoin='round';ctx.lineCap='round';
-    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';}
-  window.addEventListener('resize',resize,{passive:true});
-  window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
-  resize();
-
-  const isPen=e=>e.pointerType==='pen';
-  const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
-
-  canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
-  canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
-  const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
-
-  const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
-  function toast(m,ms=2200){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
-  const step=t=>{hint.textContent=t};
-
-  async function saveEntry(name,amount){const key=name.trim().toLowerCase();const prev=await idb.get(key)||{name,total:0,items:[]};prev.total=+(prev.total+amount).toFixed(2);prev.items.push({amount,ts:Date.now()});await idb.set(key,prev)}
-  async function allEntries(){const rows=[];await idb.iterate(v=>rows.push(v));rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));return rows}
-
-  const panel=document.getElementById('searchPanel');const btnSearch=document.getElementById('btnSearch');
-  const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
-
-  btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
-  async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
-  async function renderSearch(term){const t=(term||'').trim().toLowerCase();const rows=await allEntries();const hit=rows.filter(r=>r.name.toLowerCase().includes(t));let s=0;rowsEl.innerHTML='';hit.forEach(r=>{s+=r.total;const d=document.createElement('div');d.innerHTML=`<span>${r.name}</span><strong>${r.total.toFixed(2)} лв</strong>`;rowsEl.appendChild(d)});sumEl.textContent=`${s.toFixed(2)} лв`;}
-  q.addEventListener('input',()=>renderSearch(q.value));
-
-  // ===== ВИКАНЕ НА CLOUD RUN OCR (без да блокира писането) =====
-  async function callOCR(dataUrl){
-    const r=await fetch(`${OCR_BASE}/orc`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ image:dataUrl })
-    });
-    const j=await r.json().catch(()=>({ok:false,error:'Bad JSON'}));
-    if(!r.ok||!j.ok) throw new Error(j.error||`HTTP ${r.status}`);
-    return j; // { text, entries }
-  }
-
-  async function backgroundOCR(dataUrl){
-    try{
-      step('OCR изпратено…');
-      const { entries } = await callOCR(dataUrl);
-      if(entries?.length){
-        for(const e of entries) await saveEntry(e.name,e.amount);
-        toast(`Записани редове: ${entries.length}`);
-        if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value)}
-      }else{
-        toast('Не открих „Име - сума“');
+/* ====== IndexedDB v2: entries (всяко срещане отделно) + legacy миграция ====== */
+const DB='veresia-db', ENTRIES='entries', LEGACY='names', VER=2;
+function withDB(mode, store, fn){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(DB,VER);
+    r.onupgradeneeded=()=>{
+      const db=r.result;
+      if(!db.objectStoreNames.contains(ENTRIES)){
+        const s=db.createObjectStore(ENTRIES,{keyPath:'id',autoIncrement:true});
+        s.createIndex('by_name','nameLower',{unique:false});
+        s.createIndex('by_sheet','sheetId',{unique:false});
       }
-    }catch(err){
-      console.error('[OCR]',err);
-      toast('OCR грешка (виж конзолата)');
-    }finally{
-      step('✍️ Само писалка');
+      // legacy store оставяме ако съществува (за миграция по-късно)
+      if(!db.objectStoreNames.contains(LEGACY)){
+        // нищо, може да го няма
+      }
+    };
+    r.onerror=()=>rej(r.error);
+    r.onsuccess=()=>{
+      const tx=r.result.transaction(store,mode);
+      const s=tx.objectStore(store);
+      Promise.resolve(fn(s)).then(v=>{
+        tx.oncomplete=()=>res(v);
+      },rej);
+      tx.onerror=()=>rej(tx.error);
+    };
+  });
+}
+const idb={
+  async addEntry(e){
+    const rec={
+      sheetId:e.sheetId,
+      name:String(e.name||'').trim(),
+      nameLower:String(e.name||'').trim().toLowerCase(),
+      amount:Number(e.amount||0),
+      ts:e.ts||Date.now(),
+      raw:e.raw||null
+    };
+    return withDB('readwrite',ENTRIES,s=>new Promise((res,rej)=>{
+      const p=s.add(rec); p.onsuccess=()=>res(p.result); p.onerror=()=>rej(p.error);
+    }));
+  },
+  listAll(){
+    return withDB('readonly',ENTRIES,s=>new Promise((res,rej)=>{
+      const out=[];const c=s.openCursor();
+      c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue()}else res(out)};
+      c.onerror=()=>rej(c.error);
+    }));
+  },
+  listByName(term){
+    const t=(term||'').trim().toLowerCase();
+    if(!t) return this.listAll();
+    return withDB('readonly',ENTRIES,s=>new Promise((res,rej)=>{
+      const idx=s.index('by_name'); const out=[]; const c=idx.openCursor();
+      c.onsuccess=()=>{const cur=c.result;if(cur){const v=cur.value;if(v.nameLower.includes(t)) out.push(v);cur.continue()}else res(out)};
+      c.onerror=()=>rej(c.error);
+    }));
+  }
+};
+
+// миграция от legacy 'names' (ако има) към entries (единични срещания)
+async function migrateLegacyOnce(){
+  // проверяваме дали има legacy store изобщо
+  const r=indexedDB.open(DB,VER);
+  const hasLegacy=await new Promise(ok=>{
+    r.onupgradeneeded=()=>ok(false);
+    r.onsuccess=()=>{
+      const db=r.result;
+      ok(db.objectStoreNames.contains(LEGACY));
+    };
+    r.onerror=()=>ok(false);
+  });
+  if(!hasLegacy) return;
+  // чети legacy и прехвърляй
+  const legacy=await new Promise((res,rej)=>{
+    const r2=indexedDB.open(DB,VER);
+    r2.onsuccess=()=>{
+      const tx=r2.result.transaction(LEGACY,'readonly');
+      const s=tx.objectStore(LEGACY);
+      const out=[];
+      const c=s.openCursor();
+      c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue()}else res(out)};
+      c.onerror=()=>rej(c.error);
+    };
+    r2.onerror=()=>rej(r2.error);
+  });
+  if(!legacy || !legacy.length) return;
+  // раздуй items към entries
+  for(const rec of legacy){
+    if(Array.isArray(rec.items)){
+      for(const it of rec.items){
+        await idb.addEntry({
+          sheetId:'legacy',
+          name:rec.name,
+          amount:it.amount,
+          ts:it.ts||Date.now(),
+          raw:{legacy:true}
+        });
+      }
     }
   }
+}
 
-  // ===== Запази: PNG + нов лист + пусни OCR на заден фон =====
-  const btnSave=document.getElementById('btnSave');
-  btnSave.onclick=async()=>{
-    try{
-      btnSave.disabled=true; step('Запис: снимка…');
-      const dataUrl = canvas.toDataURL('image/png');                 // 1) снимка
-      const a=document.createElement('a'); a.href=dataUrl;
-      a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
-      document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),0);
+/* ====== UI / Canvas ====== */
+const canvas=document.getElementById('board');
+const ctx=canvas.getContext('2d',{willReadFrequently:true});
+let drawing=false,last=null;
 
-      ctx.clearRect(0,0,canvas.width,canvas.height);                 // 2) нов лист
-      step('OCR…');
-      backgroundOCR(dataUrl);                                        // 3) OCR в заден план
-    }catch(err){console.error(err);toast('Грешка при „Запази“');}
-    finally{btnSave.disabled=false}
-  };
+function resize(){
+  const dpr=window.devicePixelRatio||1;
+  const r=canvas.getBoundingClientRect();
+  canvas.width=Math.floor(r.width*dpr); canvas.height=Math.floor(r.height*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
+}
+addEventListener('resize',resize,{passive:true});
+addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
+resize();
 
-  (async()=>{await refreshSuggestions()})();
+const isPen=e=>e.pointerType==='pen';
+const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
+canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
+canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
+const stop=()=>{drawing=false;last=null}; canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
+
+// toast + hint
+const toastEl=document.getElementById('toast'); const hintEl=document.getElementById('hint');
+function toast(m,ms=2200){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
+function setHint(t){hintEl.textContent=t}
+
+/* ====== Търсене (агрегиране по име, но записите са отделни) ====== */
+const panel=document.getElementById('searchPanel');
+const btnSearch=document.getElementById('btnSearch');
+const q=document.getElementById('q');
+const rowsEl=document.getElementById('rows');
+const sumEl=document.getElementById('sum');
+const sugg=document.getElementById('suggestions');
+
+btnSearch.onclick=async()=>{panel.classList.toggle('open');resize(); if(panel.classList.contains('open')){await refreshSuggestions(); const rs=await search(''); render(rs);}};
+
+async function refreshSuggestions(){
+  const all=await idb.listAll();
+  const uniq=[...new Set(all.map(x=>x.name))].sort((a,b)=>a.localeCompare(b,'bg'));
+  sugg.innerHTML=''; uniq.forEach(n=>{const o=document.createElement('option');o.value=n;sugg.appendChild(o)})
+}
+async function search(term){
+  const rows=await idb.listByName(term);
+  const map=new Map();
+  for(const r of rows){
+    const k=r.name;
+    const cur=map.get(k)||{name:k,total:0,items:[]};
+    cur.total=+(cur.total+(r.amount||0)).toFixed(2);
+    cur.items.push({id:r.id,amount:r.amount,ts:r.ts,sheetId:r.sheetId});
+    map.set(k,cur);
+  }
+  const agg=[...map.values()].sort((a,b)=>a.name.localeCompare(b.name,'bg'));
+  const s=agg.reduce((t,x)=>t+x.total,0);
+  return {rows:agg,sum:s};
+}
+function render({rows,sum}){
+  rowsEl.innerHTML='';
+  rows.forEach(r=>{
+    const count=r.items?.length||0;
+    const d=document.createElement('div');
+    d.innerHTML=`<span>${r.name}${count>1?` <small style="opacity:.7">(${count}×)</small>`:''}</span><strong>${r.total.toFixed(2)} лв</strong>`;
+    rowsEl.appendChild(d);
+  });
+  sumEl.textContent=`${(sum||0).toFixed(2)} лв`;
+}
+q.addEventListener('input',async()=>{const rs=await search(q.value); render(rs)});
+
+/* ====== Чист кириличен парсер (fallback, ако бекендът не върне entries) ====== */
+function parseBulgarian(text){
+  const out=[]; const norm=(s)=>String(s||'').normalize('NFC').replace(/[–—−]/g,'-');
+  const rx=/([\p{Script=Cyrillic}\s'’.\-]{2,50})\s*[-=:]\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)/gu;
+  const clean=(s)=>String(s||'').normalize('NFC').replace(/[^\p{Script=Cyrillic}\s'’.\-]/gu,' ').replace(/\s+/g,' ').trim();
+  let m; const textN=norm(text);
+  while((m=rx.exec(textN))!==null){
+    const name=clean(m[1]); const amt=parseFloat(String(m[2]).replace(',', '.'));
+    if(name && Number.isFinite(amt)) out.push({name,amount:+amt.toFixed(2)});
+  }
+  return out;
+}
+
+/* ====== OCR повикване към Cloud Run (асинхронно) ====== */
+async function ocrRecognize(dataUrl){
+  const r=await fetch(OCR_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:dataUrl})});
+  const j=await r.json().catch(()=>({ok:false,error:'Bad JSON'}));
+  if(!r.ok || j.ok===false) throw new Error(j.error||`HTTP ${r.status}`);
+  // очакваме { ok:true, text, entries? }
+  let entries=[];
+  if(Array.isArray(j.entries) && j.entries.length){
+    // твърдо пазим само кирилица
+    entries = j.entries.map(e=>({
+      name: String(e.name||'').normalize('NFC').replace(/[^\p{Script=Cyrillic}\s'’.\-]/gu,' ').replace(/\s+/g,' ').trim(),
+      amount: Number(e.amount||0)
+    })).filter(e=>e.name && Number.isFinite(e.amount));
+  }else{
+    entries = parseBulgarian(j.text||'');
+  }
+  return entries;
+}
+
+/* ====== Запази (PNG → OCR във фон → запис на отделни срещания) ====== */
+const btnSave=document.getElementById('btnSave');
+function dataUrl(){return canvas.toDataURL('image/png')}
+function clearBoard(){ctx.clearRect(0,0,canvas.width,canvas.height)}
+function makeSheetId(){return 'sheet_'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}
+
+btnSave.onclick=async()=>{
+  try{
+    btnSave.disabled=true; setHint('Запис: снимка…');
+    const png=dataUrl();
+    // сваляне на PNG
+    const a=document.createElement('a'); a.href=png; a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
+    document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),0);
+
+    // нов лист веднага
+    clearBoard(); setHint('OCR…');
+    const sheetId=makeSheetId();
+
+    // OCR във фон (да можеш да пишеш)
+    (async()=>{
+      try{
+        const entries=await ocrRecognize(png);
+        if(entries.length){
+          for(const e of entries){
+            await idb.addEntry({sheetId,name:e.name,amount:e.amount,ts:Date.now(),raw:null});
+          }
+          toast(`Записани редове: ${entries.length}`);
+          if(panel.classList.contains('open')){
+            const rs=await search(q.value||''); render(rs);
+          }
+        }else{
+          toast('Не открих „Име - сума“');
+        }
+      }catch(err){
+        console.error(err); toast('OCR грешка (конзола)');
+      }finally{
+        setHint('✍️ Само писалка'); btnSave.disabled=false;
+      }
+    })();
+
+  }catch(e){
+    console.error(e); toast('Грешка при „Запази“'); setHint('Грешка'); btnSave.disabled=false;
+  }
+};
+
+/* ====== Старт ====== */
+window.addEventListener('DOMContentLoaded', async ()=>{
+  await migrateLegacyOnce();
+  if(panel.classList.contains('open')){
+    const rs=await search(''); render(rs);
+  }
 });
 </script>
 </body>
