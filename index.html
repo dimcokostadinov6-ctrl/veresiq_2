@@ -1,54 +1,97 @@
 <!DOCTYPE html>
 <html lang="bg">
 <head>
-<meta charset="utf-8" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Veresia</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body{margin:0;background:#0a0f14;color:#f8fafc;font-family:system-ui}
-.topbar{display:flex;align-items:center;gap:.5rem;background:#111827;padding:.5rem 1rem}
-.btn{background:#1e3a8a;color:white;border:none;border-radius:.4rem;padding:.4rem .8rem;cursor:pointer}
-#board{width:100%;height:90vh;display:block;background:repeating-linear-gradient(to bottom,#0a0f14 0,#0a0f14 28px,#1e293b 28px,#1e293b 29px)}
-.toast{position:fixed;bottom:15px;left:50%;transform:translateX(-50%);background:#111827;padding:.6rem .8rem;border-radius:.6rem;display:none}
-.toast.show{display:block}
+  :root{--bg:#0b0f14;--line:#1e293b;--ink:#f8fafc}
+  html,body{margin:0;height:100%;background:var(--bg);color:#e5e7eb;font-family:system-ui}
+  .topbar{display:flex;gap:.5rem;align-items:center;padding:.6rem 1rem;background:#111827;border-bottom:1px solid #243149}
+  .btn{border:1px solid #3b82f6;background:#1e3a8a;color:#fff;padding:.45rem .8rem;border-radius:.45rem;cursor:pointer}
+  .sep{flex:1}
+  #board{width:100%;height:calc(100vh - 56px);display:block;touch-action:none;
+    background:repeating-linear-gradient(to bottom,#0b0f14 0,#0b0f14 28px,#1e293b 28px,#1e293b 29px)}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;display:none}
+  .toast.show{display:block}
 </style>
 </head>
 <body>
-<div class="topbar">
-  <button id="saveBtn" class="btn">💾 Запази</button>
-  <span>✍️ Само кирилица</span>
-</div>
-<canvas id="board"></canvas>
-<div id="toast" class="toast"></div>
+  <div class="topbar">
+    <strong>Veresia</strong>
+    <button id="btnSave" class="btn">Запази</button>
+    <div class="sep"></div>
+    <span>✍️ Само писалка (кирилица)</span>
+  </div>
+
+  <canvas id="board"></canvas>
+  <div id="toast" class="toast"></div>
+
 <script>
-const OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
-const canvas=document.getElementById("board"),ctx=canvas.getContext("2d",{willReadFrequently:true});
-function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();canvas.width=r.width*dpr;canvas.height=r.height*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.strokeStyle="#f8fafc";ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=3;}
-resize();window.addEventListener("resize",resize);
+const OCR_URL = "https://ocr-980985905017.europe-west1.run.app/ocr"; // твоя Cloud Run URL
+
+// ===== Canvas =====
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d', { willReadFrequently:true });
+
+function resize(){
+  const dpr = window.devicePixelRatio || 1;
+  const r = canvas.getBoundingClientRect();
+  canvas.width = Math.floor(r.width*dpr);
+  canvas.height = Math.floor((window.innerHeight-56)*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+  ctx.lineWidth = 3;
+}
+addEventListener('resize', resize, {passive:true});
+resize();
+
 let drawing=false,last=null;
-canvas.addEventListener("pointerdown",e=>{if(e.pointerType!=="pen")return;drawing=true;last={x:e.offsetX,y:e.offsetY}});
-canvas.addEventListener("pointermove",e=>{if(!drawing||e.pointerType!=="pen")return;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(e.offsetX,e.offsetY);ctx.stroke();last={x:e.offsetX,y:e.offsetY}});
-canvas.addEventListener("pointerup",()=>drawing=false);
-canvas.addEventListener("pointerleave",()=>drawing=false);
+const isPen = e => e.pointerType==='pen';
+canvas.addEventListener('pointerdown',e=>{ if(!isPen(e))return; drawing=true; last={x:e.offsetX,y:e.offsetY}; });
+canvas.addEventListener('pointermove',e=>{ if(!drawing||!isPen(e))return; ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(e.offsetX,e.offsetY); ctx.stroke(); last={x:e.offsetX,y:e.offsetY}; });
+['pointerup','pointerleave','pointercancel'].forEach(t=>canvas.addEventListener(t,()=>drawing=false));
 
-function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("show"),2500);}
+// ===== Helpers =====
+const toastEl = document.getElementById('toast');
+function toast(m,ms=2200){ toastEl.textContent=m; toastEl.classList.add('show'); clearTimeout(toastEl._t); toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms); }
 
-document.getElementById("saveBtn").onclick=()=>{
+// ===== Save flow =====
+document.getElementById('btnSave').onclick=()=>{
+  // 1) Сваляме PNG локално
   canvas.toBlob(async blob=>{
-    const reader=new FileReader();
-    reader.onload=async()=>{
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), {
+      href:url,
+      download:`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`
+    });
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),0);
+
+    // 2) Изпращаме към OCR (в отделен асинхронен процес)
+    const reader = new FileReader();
+    reader.onload = async () => {
       try{
-        toast("⏳ Разчитане...");
-        const r=await fetch(OCR_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imageBase64:reader.result})});
-        const d=await r.json();
-        if(!d.ok)throw new Error(d.error);
-        toast("✅ Разчетени "+d.entries.length+" реда");
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        console.log("OCR резултати:",d.entries);
-      }catch(err){console.error(err);toast("❌ Грешка OCR");}
+        toast('OCR: изпращане…');
+        const res = await fetch(OCR_URL, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ imageBase64: reader.result })
+        });
+        const data = await res.json().catch(()=>({ok:false,error:'Bad JSON'}));
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+        console.log('OCR entries:', data.entries);
+        toast('Готово: '+data.entries.length+' реда');
+      }catch(err){
+        console.error('[OCR]', err);
+        toast('OCR грешка (виж конзолата)');
+      }
     };
     reader.readAsDataURL(blob);
-  });
+
+    // 3) Изчистваме листа веднага (можеш да продължиш да пишеш)
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  }, 'image/png');
 };
 </script>
 </body>
