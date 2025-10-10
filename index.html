@@ -62,8 +62,8 @@
   <div id="toast" class="toast"></div>
 
 <script>
-/* ============= НАСТРОЙКИ ============= */
-const OCR_URL = "https://ocr-980985905017.europe-west1.run.app"; // <-- твоя Cloud Run URL + /ocr
+/* ===== НАСТРОЙКА – СЛОЖИ ТОЧНО /ocr НА КРАЯ ===== */
+const OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 
 /* ===== Мини IndexedDB ===== */
 const DB_NAME='veresia-db', STORE='names', DB_VER=1;
@@ -104,7 +104,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   function toast(m,ms=2200){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
   const step=t=>{hint.textContent=t};
 
-  // База: всеки запис пази ВСЯКО срещане (не групираме)
   async function addItem(name, amount){
     const key=name.trim().toLowerCase();
     const rec=await idb.get(key)||{name, total:0, items:[]};
@@ -114,11 +113,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   async function allItemsFlat(){
     const flat=[];
-    await idb.iterate(rec=>{
-      for(const it of rec.items){
-        flat.push({ name:rec.name, amount:it.amount, ts:it.ts });
-      }
-    });
+    await idb.iterate(rec=>{for(const it of rec.items){flat.push({name:rec.name,amount:it.amount,ts:it.ts})}});
     flat.sort((a,b)=>a.name.localeCompare(b.name,'bg'));
     return flat;
   }
@@ -145,16 +140,13 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  // Подготовка на изображение за OCR (махаме линии/фон)
   function prepImageBase64(){
     const dpr=window.devicePixelRatio||1;
-    const scale=2.5; // агресивно увеличение
+    const scale=2.5;
     const w=Math.floor(canvas.width/dpr*scale), h=Math.floor(canvas.height/dpr*scale);
     const out=document.createElement('canvas'); out.width=w; out.height=h;
     const o=out.getContext('2d',{willReadFrequently:true});
     o.drawImage(canvas,0,0,w,h);
-
-    // Груб grayscale + бинаризация + премахване на сините линии (става бяло)
     const img=o.getImageData(0,0,w,h), d=img.data;
     for(let i=0;i<d.length;i+=4){
       const r=d[i], g=d[i+1], b=d[i+2];
@@ -164,7 +156,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
     }
     o.putImageData(img,0,0);
-    return out.toDataURL("image/png").split(",")[1]; // само base64
+    return out.toDataURL("image/png").split(",")[1];
   }
 
   async function runOCRInBackground(base64){
@@ -175,8 +167,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         body: JSON.stringify({ imageBase64: base64 })
       });
       const data = await resp.json().catch(()=>({ok:false,error:'Bad JSON'}));
-      if(!resp.ok || !data.ok){ throw new Error(data?.error || 'OCR failed'); }
-      // записваме ВСЕКИ ред – без групиране
+      if(!resp.ok || !data.ok) throw new Error(data?.error || 'OCR failed');
       for(const e of (data.entries||[])){ await addItem(e.name, e.amount); }
       if((data.entries||[]).length){ toast(`Записани: ${data.entries.length}`); }
       else { toast('Не открих „Име - сума“. Пример: Иван - 3,20'); }
@@ -187,7 +178,6 @@ window.addEventListener('DOMContentLoaded',()=>{
     }
   }
 
-  // Запази: 1) PNG, 2) чисти платното (да можеш да пишеш), 3) OCR във фона
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
@@ -201,20 +191,13 @@ window.addEventListener('DOMContentLoaded',()=>{
         },"image/png");
       });
 
-      // OCR във фона
       const b64 = prepImageBase64();
-      // чистим платното ВЕДНАГА (продължаваш да пишеш)
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
       step('OCR… (можеш да пишеш)');
-
       runOCRInBackground(b64);
     }catch(err){
-      console.error(err);
-      toast('Грешка при „Запази“');
-      step('Грешка');
-    }finally{
-      btnSave.disabled=false;
-    }
+      console.error(err); toast('Грешка при „Запази“'); step('Грешка');
+    }finally{ btnSave.disabled=false; }
   };
 
   (async()=>{await refreshSuggestions()})();
