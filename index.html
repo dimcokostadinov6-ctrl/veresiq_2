@@ -54,7 +54,7 @@ canvas#board{
 <div id="toast" class="toast"></div>
 
 <script>
-const OCR_URL = "https://ocr-980985905017.europe-west1.run.app/ocr"; // твоя backend
+const OCR_URL = "https://ocr-980985905017.europe-west1.run.app"; // твоя backend
 const DB_NAME='veresia-db', STORE='names', DB_VER=1;
 
 function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
