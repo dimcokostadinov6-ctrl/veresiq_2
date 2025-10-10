@@ -21,7 +21,7 @@ body{margin:0;background:#0a0f14;color:#f8fafc;font-family:system-ui}
 <canvas id="board"></canvas>
 <div id="toast" class="toast"></div>
 <script>
-const OCR_URL = "https://ocr-980985905017.europe-west1.run.app/ocr";
+const OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 const canvas=document.getElementById("board"),ctx=canvas.getContext("2d",{willReadFrequently:true});
 function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();canvas.width=r.width*dpr;canvas.height=r.height*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.strokeStyle="#f8fafc";ctx.lineCap="round";ctx.lineJoin="round";ctx.lineWidth=3;}
 resize();window.addEventListener("resize",resize);
