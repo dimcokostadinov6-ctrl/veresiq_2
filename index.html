@@ -1,234 +1,125 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="bg">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Veresia</title>
 <style>
-  :root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc}
-  html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
-  .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
-  .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
-  .btn:hover{border-color:#ffffff44}
-  .btn.primary{border-color:#60a5fa;background:#1e293b}
-  .sep{flex:1}
-  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr auto}
-  .board-wrap{position:relative;overflow:hidden}
-  canvas#board{
-    width:100%;height:100%;display:block;touch-action:none;
-    background:
-      repeating-linear-gradient(to bottom,
-        var(--bg) 0px, var(--bg) 26px,
-        var(--line) 26px, var(--line) 27px);
-  }
-  .panel{width:min(360px,92vw);background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;display:none}
-  .panel.open{display:block}
-  .panel h3{margin:.2rem 0 .6rem;font-weight:600}
-  .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
-  .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
-  .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
-  .list{font-size:.95rem;line-height:1.4}
-  .row{display:flex;justify-content:space-between;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
-  .subtle{opacity:.8;font-size:.85em}
-  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
-  .toast.show{display:block}
-  #hint{font-size:.85rem;opacity:.9}
+:root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc}
+html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
+.topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
+.btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
+.btn:hover{border-color:#ffffff44}
+.btn.primary{border-color:#60a5fa;background:#1e293b}
+.sep{flex:1}
+.stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr auto}
+.board-wrap{position:relative;overflow:hidden}
+canvas#board{
+  width:100%;height:100%;display:block;touch-action:none;
+  background:repeating-linear-gradient(to bottom,var(--bg) 0px,var(--bg) 26px,var(--line) 26px,var(--line) 27px);
+}
+.panel{width:min(360px,92vw);background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;display:none}
+.panel.open{display:block}
+.panel h3{margin:.2rem 0 .6rem;font-weight:600}
+.field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
+.field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
+.pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
+.list{font-size:.95rem;line-height:1.4}
+.list div{display:flex;justify-content:space-between;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
+.toast.show{display:block}
+#hint{font-size:.85rem;opacity:.9}
 </style>
 </head>
 <body>
-  <div class="topbar">
-    <strong>Veresia</strong>
-    <button id="btnSave" class="btn primary">Запази</button>
-    <div class="sep"></div>
-    <button id="btnSearch" class="btn">Търсене</button>
-    <span id="hint" title="Пише се само със стилус">✍️ Само писалка</span>
-  </div>
-
-  <div class="stage">
-    <div class="board-wrap">
-      <canvas id="board"></canvas>
+<div class="topbar">
+  <strong>Veresia</strong>
+  <button id="btnSave" class="btn primary">Запази</button>
+  <div class="sep"></div>
+  <button id="btnSearch" class="btn">Търсене</button>
+  <span id="hint">✍️ Само писалка</span>
+</div>
+<div class="stage">
+  <div class="board-wrap"><canvas id="board"></canvas></div>
+  <aside id="searchPanel" class="panel">
+    <h3>Търсене</h3>
+    <div class="field">
+      <input id="q" type="search" placeholder="Име…" list="suggestions" autocomplete="off"/>
+      <datalist id="suggestions"></datalist>
+      <span id="sum" class="pill">0.00 лв</span>
     </div>
-    <aside id="searchPanel" class="panel" aria-label="Търсене">
-      <h3>Търсене</h3>
-      <div class="field">
-        <input id="q" type="search" placeholder="Име…" list="suggestions" autocomplete="off"
-               spellcheck="false" autocapitalize="off" autocorrect="off"/>
-        <datalist id="suggestions"></datalist>
-        <span id="sum" class="pill">0.00 лв</span>
-      </div>
-      <div id="rows" class="list" aria-live="polite"></div>
-    </aside>
-  </div>
-
-  <div id="toast" class="toast"></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <div id="rows" class="list"></div>
+  </aside>
+</div>
+<div id="toast" class="toast"></div>
 
 <script>
-/* ===== Настройки ===== */
-const OCR_URL = 'https://ocr-980985905017.europe-west1.run.app'; // твоят Cloud Run URL + /ocr
-const USE_CLOUD = true;
+const OCR_URL = "https://ocr-980985905017.europe-west1.run.app/ocr"; // твоя backend
+const DB_NAME='veresia-db', STORE='names', DB_VER=1;
 
-/* ===== Само българска азбука ===== */
-const BG_LETTERS = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯабвгдежзийклмнопрстуфхцчшщъьюя";
-const ALLOWED_NAME_CHARS = new Set([...BG_LETTERS, ' ', "'", '’', '.', '-', ':']);
-function keepBulgarian(s){
-  let out=''; for(const ch of s){ if(ALLOWED_NAME_CHARS.has(ch)) out+=ch; }
-  return out.replace(/\s+/g,' ').trim();
-}
-
-/* ===== IndexedDB: отделни записи ===== */
-const DB='veresia-db', STORE='entries', VER=2;
-function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,VER);
-  r.onupgradeneeded=()=>{const db=r.result;if(db.objectStoreNames.contains('names')) db.deleteObjectStore('names');
-    if(!db.objectStoreNames.contains(STORE)){const s=db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});s.createIndex('name','name',{unique:false});}};
-  r.onerror=()=>rej(r.error); r.onsuccess=()=>res(r.result);});}
-async function tx(mode,fn){const db=await openDB();return new Promise((res,rej)=>{const t=db.transaction(STORE,mode);const s=t.objectStore(STORE);Promise.resolve(fn(s)).then(v=>{t.oncomplete=()=>res(v);t.onerror=()=>rej(t.error);});});}
-const dbAPI={
-  add:e=>tx('readwrite',s=>s.add(e)),
-  all:()=>tx('readonly',s=>new Promise((res,rej)=>{const out=[];const c=s.openCursor();c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue();}else res(out)};c.onerror=()=>rej(c.error);})),
-  byName:q=>tx('readonly',s=>new Promise((res,rej)=>{const out=[];const idx=s.index('name');const range=IDBKeyRange.bound(q.toLowerCase(),q.toLowerCase()+'\uffff');const c=idx.openCursor();c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue();}else res(out)};c.onerror=()=>rej(c.error);})),
+function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
+r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{autoIncrement:true});};
+r.onerror=()=>rej(r.error);r.onsuccess=()=>{const tx=r.result.transaction(STORE,mode);const s=tx.objectStore(STORE);
+Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error)},rej)}});}
+const idb={
+  add:v=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.add(v);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+  all:()=>withDB('readonly',s=>new Promise((res,rej)=>{const arr=[];const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){arr.push(c.value);c.continue()}else res(arr)};r.onerror=()=>rej(r.error)}))
 };
 
-/* ===== Canvas ===== */
 window.addEventListener('DOMContentLoaded',()=>{
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  let drawing=false,last=null,pageId=Date.now();
-
   function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
-    canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineJoin='round';ctx.lineCap='round';
-    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';}
-  addEventListener('resize',resize,{passive:true}); addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true}); resize();
-
+    canvas.width=r.width*dpr;canvas.height=r.height*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.lineJoin='round';ctx.lineCap='round';ctx.strokeStyle='#f8fafc';}
+  resize();window.addEventListener('resize',resize);
   const isPen=e=>e.pointerType==='pen';
-  const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
-
+  let drawing=false,last=null;
+  const pos=e=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
   canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
-  canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
-  const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
+  canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
+  const stop=()=>drawing=false;canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointerleave',stop);
 
-  /* ===== UI =====*/
-  const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
-  const panel=document.getElementById('searchPanel'); const btnSearch=document.getElementById('btnSearch');
-  const q=document.getElementById('q'); const rowsEl=document.getElementById('rows'); const sumEl=document.getElementById('sum'); const sugg=document.getElementById('suggestions');
-  const toast=(m,ms=2200)=>{toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)};
-  const step=t=>{hint.textContent=t};
+  const toastEl=document.getElementById('toast');
+  const toast=m=>{toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),2200);};
 
-  btnSearch.onclick=async()=>{panel.classList.toggle('open');if(panel.classList.contains('open')){await refreshSuggestions();await render();q.focus()}};
+  const panel=document.getElementById('searchPanel');
+  const btnSearch=document.getElementById('btnSearch');
+  const q=document.getElementById('q');
+  const rowsEl=document.getElementById('rows');
+  const sumEl=document.getElementById('sum');
+  const sugg=document.getElementById('suggestions');
 
-  async function refreshSuggestions(){
-    const all=await dbAPI.all();
-    const names=[...new Set(all.map(r=>r.name))].sort((a,b)=>a.localeCompare(b,'bg'));
-    sugg.innerHTML=''; for(const n of names){const o=document.createElement('option');o.value=n;sugg.appendChild(o);}
-  }
-  async function render(){
-    const term=(q.value||'').trim().toLowerCase();
-    const arr = term? await dbAPI.byName(term) : await dbAPI.all();
-    const hit = term? arr.filter(r=>r.name.toLowerCase().includes(term)) : arr;
-    hit.sort((a,b)=>a.name.localeCompare(b.name,'bg')||a.ts-b.ts);
-    rowsEl.innerHTML=''; let total=0;
-    for(const r of hit){ total+=r.amount;
-      const d=document.createElement('div'); d.className='row';
-      const dt=new Date(r.ts); d.innerHTML=`<span>${r.name} <span class="subtle">(${dt.toLocaleDateString('bg-BG')} ${dt.toLocaleTimeString('bg-BG')})</span></span><strong>${r.amount.toFixed(2)} лв</strong>`;
-      rowsEl.appendChild(d);
-    }
-    sumEl.textContent=`${total.toFixed(2)} лв`;
-  }
-  q.addEventListener('input',render);
+  async function refresh(){const rows=await idb.all();const names=[...new Set(rows.map(x=>x.name))];
+    sugg.innerHTML='';names.forEach(n=>{const o=document.createElement('option');o.value=n;sugg.appendChild(o)});}
+  async function render(term){const t=term.toLowerCase();const rows=await idb.all();
+    const hit=rows.filter(r=>r.name.toLowerCase().includes(t));let s=0;rowsEl.innerHTML='';
+    hit.forEach(r=>{s+=r.amount;const d=document.createElement('div');d.innerHTML=`<span>${r.name}</span><strong>${r.amount.toFixed(2)} лв</strong>`;rowsEl.appendChild(d)});
+    sumEl.textContent=s.toFixed(2)+' лв';}
 
-  /* ===== Подготовка на изображение ===== */
-  function prepImageForOCR(src){
-    const dpr=window.devicePixelRatio||1, scale=3;
-    const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
-    const out=document.createElement('canvas'); out.width=w; out.height=h;
-    const o=out.getContext('2d',{willReadFrequently:true});
-    o.drawImage(src,0,0,w,h);
-    let img=o.getImageData(0,0,w,h), d=img.data;
-    for(let i=0;i<d.length;i+=4){
-      const r=d[i],g=d[i+1],b=d[i+2]; const bright=r+g+b;
-      const isInk = bright>680; const isBlue = b>60 && b>r+20 && b>g+10;
-      const v = isInk ? 0 : 255;
-      d[i]=d[i+1]=d[i+2]= isBlue ? 255 : v; d[i+3]=255;
-    }
-    o.putImageData(img,0,0);
-    return out;
-  }
+  btnSearch.onclick=async()=>{panel.classList.toggle('open');if(panel.classList.contains('open')){await refresh();render(q.value)}};
+  q.addEventListener('input',()=>render(q.value));
 
-  /* ===== Парсване (само БГ кирилица) ===== */
-  function parseBulgarian(text){
-    const norm = (s)=>s.normalize('NFC').replace(/[–—−]/g,'-');
-    const lines = norm(text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    const rx=/^([\p{L}\s'’.:-]{2,50})\s*[-=:]\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)$/u;
-    const out=[];
-    for(const raw of lines){
-      const m = raw.match(rx); if(!m) continue;
-      const name = keepBulgarian(m[1]);
-      const amt = parseFloat(m[2].replace(',', '.'));
-      if(name && Number.isFinite(amt)) out.push({name,amount:+amt.toFixed(2)});
-    }
-    return out;
-  }
-
-  /* ===== OCR Cloud / Local ===== */
-  async function ocrViaCloud(canvasEl){
-    const work=prepImageForOCR(canvasEl);
-    const blob=await new Promise(r=>work.toBlob(b=>r(b),'image/png'));
-    const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob);});
-    const resp=await fetch(OCR_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:b64})});
-    if(!resp.ok) throw new Error('Cloud OCR HTTP '+resp.status);
-    const data=await resp.json(); if(!data.ok) throw new Error(data.error||'OCR fail');
-    // изчисти несъответстващи знаци, ако все пак излязат
-    return data.entries.map(e=>({name:keepBulgarian(e.name||''),amount:+e.amount})).filter(e=>e.name && Number.isFinite(e.amount));
-  }
-  async function ocrLocal(canvasEl){
-    let worker;
-    try{ worker = await Tesseract.createWorker('bul'); }
-    catch{ worker = await Tesseract.createWorker({logger:()=>{}}); await worker.load(); await worker.loadLanguage('bul'); await worker.initialize('bul'); }
-    await worker.setParameters({
-      tessedit_pageseg_mode:'6',
-      preserve_interword_spaces:'1',
-      // само БГ кирилица + цифри и разделители
-      tessedit_char_whitelist: BG_LETTERS + "0123456789-., ':"
-    });
-    const prep=prepImageForOCR(canvasEl);
-    const { data:{ text } } = await worker.recognize(prep);
-    await worker.terminate();
-    return parseBulgarian(text);
-  }
-  async function runOCR(c){ return USE_CLOUD ? (await ocrViaCloud(c).catch(()=>ocrLocal(c))) : ocrLocal(c); }
-
-  /* ===== Запази ===== */
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
-    try{
-      btnSave.disabled=true;
-      // снимка за теб
-      const png=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
-      const a=document.createElement('a'); a.href=URL.createObjectURL(png);
-      a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
-      document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
-
-      // OCR върху копие; чистим платното да пишеш веднага
-      const copy=document.createElement('canvas'); copy.width=canvas.width; copy.height=canvas.height;
-      copy.getContext('2d').drawImage(canvas,0,0);
-      const thisPage=pageId; pageId=Date.now();
-      const ctx2=canvas.getContext('2d'); ctx2.clearRect(0,0,canvas.width,canvas.height);
-
-      runOCR(copy).then(async entries=>{
-        if(entries.length){
-          for(const e of entries){ await dbAPI.add({name:e.name,amount:e.amount,ts:Date.now(),pageId:thisPage}); }
-          toast(`Записани редове: ${entries.length}`);
-          if(panel.classList.contains('open')){await refreshSuggestions(); await render();}
-        }else{
-          toast('Не открих „Име - сума“');
-        }
-      }).catch(err=>{console.error('[OCR]',err);toast('OCR грешка (виж конзолата)')});
-    }finally{ btnSave.disabled=false; }
+    btnSave.disabled=true;
+    toast('Запазвам...');
+    const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
+    const reader=new FileReader();
+    reader.onload=async()=>{
+      try{
+        const base64=reader.result;
+        const r=await fetch(OCR_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:base64})});
+        const d=await r.json();
+        if(!d.ok)throw new Error(d.error);
+        for(const e of d.entries){await idb.add({name:e.name,amount:e.amount,ts:Date.now()});}
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        toast('Готово, записани '+d.entries.length);
+      }catch(err){toast('Грешка OCR');console.error(err);}
+      btnSave.disabled=false;
+    };
+    reader.readAsDataURL(blob);
   };
-
-  (async()=>{await refreshSuggestions();await render();})();
 });
 </script>
 </body>
