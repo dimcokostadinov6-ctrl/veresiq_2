@@ -59,7 +59,8 @@
   <div id="toast" class="toast"></div>
 
 <script>
-const OCR_URL = "hhttps://ocr-980985905017.europe-west1.run.app";
+/* >>> НАСТРОЙКА: адрес на Cloud Run <<< */
+const OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 
 /* ===== IndexedDB: пазим всеки ред отделно ===== */
 const DB='veresia-db', STORE='items', VER=2;
@@ -119,7 +120,12 @@ window.addEventListener('DOMContentLoaded',()=>{
   q.addEventListener('input',()=>render(q.value));
 
   async function ocrViaCloudRun(pngDataURL){
-    const resp=await fetch(OCR_URL,{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:pngDataURL})});
+    const resp=await fetch(OCR_URL,{
+      method:'POST',
+      mode:'cors',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:pngDataURL})
+    });
     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return resp.json();
   }
@@ -134,7 +140,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),0);
 
-      // 2) OCR в бекграунд (ти можеш да пишеш веднага)
+      // 2) OCR в бекграунд (можеш да пишеш веднага)
       (async()=>{
         try{
           step('OCR…');
