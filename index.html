@@ -32,7 +32,6 @@
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
-  /* Иконка „ръчичка с химикал“ */
   .pen-indicator{position:fixed;left:6px;top:52px;width:34px;height:34px;border-radius:50%;background:#0e1628;border:1px solid #203255;display:grid;place-items:center;z-index:6}
   .pen-indicator:after{content:"✍️";font-size:18px}
 </style>
@@ -66,11 +65,10 @@
 
 <script>
 /*** КОНФИГ ***/
-// ВАЖНО: накрая трябва да е /ocr
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 
-/*** Мини IndexedDB ***/
+/*** IndexedDB ***/
 const DB_NAME='veresia-db', STORE='names', DB_VER=1;
 function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
 r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);};
@@ -114,7 +112,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   function toast(m,ms=2400){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
   const step=t=>{hint.textContent=t};
 
-  // База: пазим тотала и подробните записи (за да показваме дубликати поотделно)
   async function saveEntry(name,amount){
     const key=name.trim().toLowerCase();
     const prev=await idb.get(key)||{name,total:0,items:[]};
@@ -133,7 +130,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
   async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
 
-  // Показваме всеки запис поотделно (не „(2×)“)
   async function renderSearch(term){
     const t=(term||'').trim().toLowerCase();
     const rows=await allEntries();
@@ -156,7 +152,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  // Подготовка на изображението – премахва сините линии и фон
   function prepForOCR(src){
     const dpr=window.devicePixelRatio||1, scale=3;
     const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
@@ -167,13 +162,12 @@ window.addEventListener('DOMContentLoaded',()=>{
     for(let i=0;i<d.length;i+=4){
       const r=d[i], g=d[i+1], b=d[i+2];
       const bright=r+g+b;
-      const isInk = bright>680;                // бяло мастило
-      const isBlue = b>60 && b>r+20 && b>g+10; // линии/фон
+      const isInk = bright>680;
+      const isBlue = b>60 && b>r+20 && b>g+10;
       const v = isInk ? 0 : 255;
-      d[i]=d[i+1]=d[i+2]= (isBlue ? 255 : v); d[i+3]=255;
+      d[i]=d[i+1]=d[i+2]=(isBlue?255:v); d[i+3]=255;
     }
     o.putImageData(img,0,0);
-    // лек локален праг
     const g2=o.getImageData(0,0,w,h), G=g2.data;
     for(let y=1;y<h-1;y++){
       for(let x=1;x<w-1;x++){
@@ -192,6 +186,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       const base64 = imgDataURL.split(',')[1];
       const r = await fetch(OCR_URL, {
         method:'POST',
+        mode:'cors',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ imageBase64: base64 })
       });
@@ -222,19 +217,18 @@ window.addEventListener('DOMContentLoaded',()=>{
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // 2) Пращаме към OCR във фонов режим (не блокира писането)
+      // 2) OCR във фона
       const pre=prepForOCR(canvas);
       const dataURL=pre.toDataURL('image/png');
 
-      // 3) Нов лист веднага
+      // 3) Нов лист веднага (можеш да продължиш да пишеш)
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      // 4) OCR продължава във фона
+      // 4) Пращаме към бекенда
       void sendToOCR(dataURL);
     }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
   };
 
-  // първоначално попълване на подсказките
   (async()=>{await refreshSuggestions()})();
 });
 </script>
