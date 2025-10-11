@@ -27,8 +27,8 @@
   .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
   .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
-  .list{font-size:.95rem;line-height:1.35;max-height:calc(100vh - 150px);overflow:auto}
-  .row{display:flex;justify-content:space-between;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
+  .list{font-size:.95rem;line-height:1.4}
+  .list div{display:flex;justify-content:space-between;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
@@ -44,7 +44,9 @@
   </div>
 
   <div class="stage">
-    <div class="board-wrap"><canvas id="board"></canvas></div>
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
+    </div>
     <aside id="searchPanel" class="panel" aria-label="Търсене">
       <h3>Търсене</h3>
       <div class="field">
@@ -59,22 +61,23 @@
   <div id="toast" class="toast"></div>
 
 <script>
-/* >>> НАСТРОЙКА: адрес на Cloud Run <<< */
+/* ================== НАСТРОЙКА ================== */
+// СЛОЖИ ТОЧНО ТВОЯ URL (с /ocr накрая)
 const OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 
-/* ===== IndexedDB: пазим всеки ред отделно ===== */
-const DB='veresia-db', STORE='items', VER=2;
-function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB,VER);
-r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{autoIncrement:true});};
+/* ===== Мини IndexedDB ===== */
+const DB_NAME='veresia-db', STORE='names', DB_VER=1;
+function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
+r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);};
 r.onerror=()=>rej(r.error);
 r.onsuccess=()=>{const tx=r.result.transaction(STORE,mode);const s=tx.objectStore(STORE);
-Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} })}
-const idb={
-  add:v=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.add(v);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-  all:()=>withDB('readonly',s=>new Promise((res,rej)=>{const out=[];const c=s.openCursor();c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue()}else res(out)};c.onerror=()=>rej(c.error)}))
-};
+Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
+const idb={get:k=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
+           set:(k,v)=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+           // пазим ВСЕКИ ред отделно (дубликати се пазят като items елементи)
+           iterate:(cb)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))};
 
-/* ===== Canvas ===== */
+/* ===== UI / Canvas ===== */
 window.addEventListener('DOMContentLoaded',()=>{
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
@@ -89,6 +92,7 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   const isPen=e=>e.pointerType==='pen';
   const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
+
   canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
   canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
   const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
@@ -97,70 +101,94 @@ window.addEventListener('DOMContentLoaded',()=>{
   function toast(m,ms=2200){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
   const step=t=>{hint.textContent=t};
 
-  async function saveItem(name,amount){await idb.add({name,amount:+amount.toFixed(2),ts:Date.now()});}
+  // База: пазим отделни записи (дубликати не се обединяват при запис)
+  async function saveEntry(name,amount){
+    const key=name.trim().toLowerCase();
+    const prev=await idb.get(key)||{name,items:[],total:0};
+    prev.items.push({amount,ts:Date.now()});
+    prev.total=+(prev.total+amount).toFixed(2);
+    await idb.set(key,prev);
+  }
+  async function allEntries(){
+    const rows=[]; await idb.iterate(v=>rows.push(v));
+    rows.sort((a,b)=>a.name.localeCompare(b.name,'bg')); return rows;
+  }
 
+  // Търсене — показва ВСЕКИ item по отделно
   const panel=document.getElementById('searchPanel');const btnSearch=document.getElementById('btnSearch');
   const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
 
-  btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();render(q.value);q.focus()}};
-
-  async function refreshSuggestions(){
-    const all=await idb.all();
-    const names=[...new Set(all.map(x=>x.name))].sort((a,b)=>a.localeCompare(b,'bg'));
-    sugg.innerHTML=''; names.forEach(n=>{const o=document.createElement('option');o.value=n;sugg.appendChild(o);});
-  }
-  async function render(term){
-    const t=(term||'').trim().toLowerCase(); const all=await idb.all();
-    const hit=all.filter(r=>r.name.toLowerCase().includes(t));
-    let s=0; rowsEl.innerHTML='';
-    hit.forEach(r=>{s+=r.amount; const d=document.createElement('div'); d.className='row';
-      d.innerHTML=`<span>${r.name}</span><strong>${r.amount.toFixed(2)} лв</strong>`; rowsEl.appendChild(d);});
+  btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
+  async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
+  async function renderSearch(term){
+    const t=(term||'').trim().toLowerCase(); const rows=await allEntries();
+    rowsEl.innerHTML='';
+    let s=0;
+    for(const r of rows){
+      if(!r.name.toLowerCase().includes(t)) continue;
+      for(const it of r.items){
+        s+=it.amount;
+        const d=document.createElement('div');
+        const dt=new Date(it.ts).toLocaleString('bg-BG');
+        d.innerHTML=`<span>${r.name} <small style="opacity:.6">(${dt})</small></span><strong>${it.amount.toFixed(2)} лв</strong>`;
+        rowsEl.appendChild(d);
+      }
+    }
     sumEl.textContent=`${s.toFixed(2)} лв`;
   }
-  q.addEventListener('input',()=>render(q.value));
+  q.addEventListener('input',()=>renderSearch(q.value));
 
-  async function ocrViaCloudRun(pngDataURL){
-    const resp=await fetch(OCR_URL,{
-      method:'POST',
-      mode:'cors',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image:pngDataURL})
-    });
-    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return resp.json();
+  // Изпращане към Cloud Run (бекграунд), без да блокира писането
+  async function sendToOCR(dataURL){
+    try{
+      const resp = await fetch(OCR_URL, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ image: dataURL })
+      });
+      if(!resp.ok){
+        const tx = await resp.text().catch(()=>String(resp.status));
+        throw new Error(`HTTP ${resp.status}: ${tx}`);
+      }
+      const j = await resp.json();
+      if(!j.ok) throw new Error(j.error||'Unknown OCR error');
+      const entries = Array.isArray(j.entries)? j.entries: [];
+      for(const e of entries){ await saveEntry(e.name, e.amount); }
+      if(entries.length){ toast(`Записани редове: ${entries.length}`); if(panel.classList.contains('open')) renderSearch(q.value); }
+      else { toast('Не открих „Име - сума“ (само кирилица).'); }
+    }catch(err){
+      console.error('[OCR] →', err);
+      toast('OCR грешка (виж конзолата)');
+    }
   }
 
+  // „Запази“: PNG → изтегляне, OCR (бекграунд), чистене
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
-      btnSave.disabled=true; step('Запис: снимка…');
+      btnSave.disabled=true;
+      step('Запис: снимка…');
 
-      const dataURL=canvas.toDataURL('image/png');  // 1) снимка
-      const a=document.createElement('a'); a.href=dataURL;
+      // 1) снимка (преди да чистим)
+      const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
+      const dataURL = await new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(blob); });
+
+      // изтегляне на PNG
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
-      document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),0);
+      document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // 2) OCR в бекграунд (можеш да пишеш веднага)
-      (async()=>{
-        try{
-          step('OCR…');
-          const out=await ocrViaCloudRun(dataURL);
-          if(out?.ok && Array.isArray(out.entries) && out.entries.length){
-            for(const e of out.entries) await saveItem(e.name,e.amount);
-            toast(`Записани редове: ${out.entries.length}`);
-            if(panel.classList.contains('open')){await refreshSuggestions();render(q.value)}
-          }else{
-            toast('Не открих „Име - сума“');
-          }
-          step('Готово');
-        }catch(err){console.error('[OCR]',err);toast('OCR грешка (виж конзолата)');step('Грешка')}
-      })();
+      // 2) OCR в бекграунд
+      step('OCR…'); sendToOCR(dataURL); // НЕ чакаме — тръгва паралелно
 
-      // 3) чист лист за писане
+      // 3) нов „лист“
       ctx.clearRect(0,0,canvas.width,canvas.height);
+      step('Готово — пишете свободно');
 
-    }catch(err){console.error(err);toast('Грешка при „Запази“');step('Грешка')}
-    finally{btnSave.disabled=false}
+    }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
+    finally{ btnSave.disabled=false; }
   };
 
   (async()=>{await refreshSuggestions()})();
