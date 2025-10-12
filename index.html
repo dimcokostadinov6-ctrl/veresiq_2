@@ -5,14 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>Veresia</title>
 <style>
-  :root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc;--muted:#97a3b3;--yellow:#f59e0b}
+  :root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc}
   html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
   .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
   .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
   .sep{flex:1}
-  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr auto}
+
+  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr min(420px,92vw)}
   .board-wrap{position:relative;overflow:hidden}
   canvas#board{
     width:100%;height:100%;display:block;touch-action:none;
@@ -21,37 +22,27 @@
         var(--bg) 0px, var(--bg) 26px,
         var(--line) 26px, var(--line) 27px);
   }
-  .panel{width:min(460px,94vw);background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;display:none}
-  .panel.open{display:block}
-  .tabs{display:flex;gap:.4rem;margin-bottom:.5rem}
-  .tab{padding:.35rem .6rem;border:1px solid #223255;border-radius:.45rem;cursor:pointer}
-  .tab[aria-selected="true"]{background:#132036}
-  .section{display:none}
-  .section.open{display:block}
-  .hflex{display:flex;gap:.5rem;align-items:center}
+  aside.panel{background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;overflow:auto}
+  .tabs{display:flex;gap:.5rem;margin-bottom:.5rem}
+  .tab{padding:.25rem .6rem;border:1px solid #334166;border-radius:.5rem;background:#0b1426;cursor:pointer}
+  .tab.active{background:#1b243a}
+
   .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
   .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
-  .list{font-size:.95rem;line-height:1.4;max-height:calc(100vh - 200px);overflow:auto}
-  .row{display:grid;grid-template-columns:1fr auto;gap:.6rem;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
-  .muted{color:#9aa6b6}
-  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:20;display:none}
+  .list{font-size:.95rem;line-height:1.4}
+  .list div.row{display:grid;grid-template-columns:1fr auto auto;gap:.5rem;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
+
+  .review-card{border:1px solid #25345c;border-radius:.6rem;padding:.5rem;margin:.55rem 0;background:#0e1628}
+  .review-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
+  .thumb{width:100%;max-height:220px;object-fit:contain;background:#0a1222;border:1px solid #223253;border-radius:.4rem;cursor:zoom-in}
+  .review-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem}
+  .review-actions .btn{padding:.35rem .6rem}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
   .pen-indicator{position:fixed;left:6px;top:52px;width:34px;height:34px;border-radius:50%;background:#0e1628;border:1px solid #203255;display:grid;place-items:center;z-index:6}
   .pen-indicator:after{content:"✍️";font-size:18px}
-
-  .rev-row{display:grid;grid-template-columns:160px 1fr auto;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed #1c2744}
-  .rev-row img{width:160px;max-height:120px;object-fit:contain;background:#0c1426;border:1px solid #223255;border-radius:.25rem;cursor:zoom-in}
-  .rev-row input{padding:.38rem .5rem;border-radius:.4rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
-  .rev-row .actions{display:flex;gap:.35rem;align-items:center}
-  .rev-row .btn{padding:.35rem .55rem;font-size:.85rem}
-  .tag{font-size:.75rem;color:#111827;background:var(--yellow);border-radius:.35rem;padding:.1rem .3rem}
-
-  /* Увеличител (overlay) */
-  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:30}
-  .overlay.open{display:flex}
-  .overlay img{max-width:92vw;max-height:92vh;border-radius:.4rem;border:1px solid #334155;background:#0b1220}
 </style>
 </head>
 <body>
@@ -68,362 +59,276 @@
     <div class="board-wrap">
       <canvas id="board"></canvas>
     </div>
-
-    <aside id="side" class="panel" aria-label="Страничен панел">
+    <aside id="panel" class="panel" aria-label="панел">
       <div class="tabs">
-        <button class="tab" id="tabSearch" aria-selected="true">Търсене</button>
-        <button class="tab" id="tabReview" aria-selected="false">За преглед</button>
+        <button class="tab active" data-tab="search">Търсене</button>
+        <button class="tab" data-tab="review">За преглед</button>
       </div>
 
-      <section id="secSearch" class="section open">
+      <section id="tab-search">
         <div class="field">
           <input id="q" type="search" placeholder="Име…" list="suggestions" autocomplete="off"/>
           <datalist id="suggestions"></datalist>
-        </div>
-        <div class="hflex" style="justify-content:space-between;margin-bottom:.5rem">
-          <span class="pill" id="sumOk">Сигурни: 0.00 лв</span>
-          <span class="pill" id="sumReview" title="редове за потвърждение">За преглед: 0.00 лв</span>
+          <span id="sum" class="pill">0.00 лв</span>
         </div>
         <div id="rows" class="list" aria-live="polite"></div>
       </section>
 
-      <section id="secReview" class="section">
-        <div class="hflex" style="justify-content:space-between;margin:.2rem 0 .5rem">
-          <strong>Редове за потвърждение</strong>
-          <span class="muted" id="revCount">0</span>
-        </div>
-        <div id="revList" class="list" aria-live="polite"></div>
+      <section id="tab-review" hidden>
+        <div id="reviewList"></div>
       </section>
     </aside>
   </div>
 
   <div id="toast" class="toast"></div>
 
-  <div id="overlay" class="overlay" tabindex="-1" aria-hidden="true">
-    <img id="overlayImg" alt="Преглед"/>
-  </div>
-
 <script>
 /*** КОНФИГ ***/
+// Сложи своя Cloud Run адрес; трябва да завършва с /ocr
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
-if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
-const OCR_BATCH_URL = OCR_URL.replace(/\/ocr\/?$/, "/ocr-batch");
-const OCR_ALL_URL   = OCR_URL.replace(/\/ocr\/?$/, "/ocr-all");
 
 /*** IndexedDB ***/
-const DB_NAME='veresia-db', DB_VER=3, STORE_NAMES='names', STORE_REVIEW='review';
-function withDB(mode, store, fn){
-  return new Promise((res,rej)=>{
-    const r=indexedDB.open(DB_NAME,DB_VER);
-    r.onupgradeneeded=()=>{const db=r.result;
-      if(!db.objectStoreNames.contains(STORE_NAMES)) db.createObjectStore(STORE_NAMES);
-      if(!db.objectStoreNames.contains(STORE_REVIEW)) db.createObjectStore(STORE_REVIEW,{keyPath:'id',autoIncrement:true});
-    };
-    r.onerror=()=>rej(r.error);
-    r.onsuccess=()=>{const tx=r.result.transaction(store,mode);const s=tx.objectStore(store);
-      Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error)},rej)};
-  });
-}
-const dbNames={
-  get:k=>withDB('readonly',STORE_NAMES,s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
-  set:(k,v)=>withDB('readwrite',STORE_NAMES,s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-  each:(cb)=>withDB('readonly',STORE_NAMES,s=>new Promise((res,rej)=>{const c=s.openCursor();c.onsuccess=()=>{const k=c.result;if(k){cb(k.value,k.key);k.continue()}else res()};c.onerror=()=>rej(c.error)}))
+const DB_NAME='veresia-db', STORE='names', REVIEW='review', DB_VER=2;
+function withDB(mode,store,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
+r.onupgradeneeded=()=>{const db=r.result;
+  if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+  if(!db.objectStoreNames.contains(REVIEW)) db.createObjectStore(REVIEW,{autoIncrement:true});
 };
-const dbReview={
-  add:(v)=>withDB('readwrite',STORE_REVIEW,s=>new Promise((res,rej)=>{const r=s.add(v);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
-  del:(id)=>withDB('readwrite',STORE_REVIEW,s=>new Promise((res,rej)=>{const r=s.delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-  all:()=>withDB('readonly',STORE_REVIEW,s=>new Promise((res,rej)=>{const arr=[];const c=s.openCursor();c.onsuccess=()=>{const k=c.result;if(k){arr.push(k.value);k.continue()}else res(arr)};c.onerror=()=>rej(c.error)}))
+r.onerror=()=>rej(r.error);
+r.onsuccess=()=>{const tx=r.result.transaction(store,mode);const s=tx.objectStore(store);
+Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
+const idb={
+  get:(k)=>withDB('readonly',STORE,s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
+  set:(k,v)=>withDB('readwrite',STORE,s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+  iterateAll:()=>withDB('readonly',STORE,s=>new Promise((res,rej)=>{const out=[];const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){out.push(c.value);c.continue()}else res(out)};r.onerror=()=>rej(r.error)})),
+  addReview:(obj)=>withDB('readwrite',REVIEW,s=>new Promise((res,rej)=>{const r=s.add(obj);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
+  listReview:()=>withDB('readonly',REVIEW,s=>new Promise((res,rej)=>{const out=[];const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){out.push({id:c.key,...c.value});c.continue()}else res(out)};r.onerror=()=>rej(r.error)})),
+  delReview:(id)=>withDB('readwrite',REVIEW,s=>new Promise((res,rej)=>{const r=s.delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
 };
 
-/*** UI / CANVAS ***/
+/*** UI / Canvas ***/
 window.addEventListener('DOMContentLoaded',()=>{
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   let drawing=false,last=null;
 
-  function resize(){const dpr=devicePixelRatio||1;const r=canvas.getBoundingClientRect();
-    canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineJoin='round';ctx.lineCap='round';
+  function resize(){
+    const dpr=window.devicePixelRatio||1;
+    const r=canvas.getBoundingClientRect();
+    canvas.width=Math.floor(r.width*dpr);
+    canvas.height=Math.floor(r.height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.lineJoin='round';
+    ctx.lineCap='round';
     ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
   }
-  addEventListener('resize',resize,{passive:true}); addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true}); resize();
+  window.addEventListener('resize',resize,{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
+  resize();
 
   const isPen=e=>e.pointerType==='pen';
-  const pxy=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
+  const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
 
-  canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pxy(e)});
-  canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pxy(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
-  const stop=()=>{drawing=false;last=null}; canvas.addEventListener('pointerup',stop); canvas.addEventListener('pointercancel',stop); canvas.addEventListener('pointerleave',stop);
+  canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
+  canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
+  const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
 
   const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
   function toast(m,ms=2400){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
   const step=t=>{hint.textContent=t};
 
-  // overlay zoom
-  const overlay=document.getElementById('overlay'), overlayImg=document.getElementById('overlayImg');
-  function openOverlay(src){overlayImg.src=src;overlay.classList.add('open');overlay.focus();}
-  overlay.onclick=()=>overlay.classList.remove('open');
-
   async function saveEntry(name,amount){
     const key=name.trim().toLowerCase();
-    const rec=(await dbNames.get(key))||{name,total:0,items:[]};
-    rec.total=+(rec.total+amount).toFixed(2);
-    rec.items.push({amount,ts:Date.now()});
-    await dbNames.set(key,rec);
+    const prev=await idb.get(key)||{name,total:0,items:[]};
+    prev.total=+(prev.total+amount).toFixed(2);
+    prev.items.push({amount,ts:Date.now()});
+    await idb.set(key,prev);
   }
-  async function allRowsFlat(){
-    const rows=[]; await dbNames.each(rec=>{for(const it of rec.items) rows.push({name:rec.name,amount:it.amount,ts:it.ts})});
-    rows.sort((a,b)=>a.name.localeCompare(b.name,'bg') || a.ts-b.ts);
-    return rows;
-  }
-  async function addReview(item){ return await dbReview.add(item); }
-  async function delReview(id){ return await dbReview.del(id); }
-  async function listReview(){ return await dbReview.all(); }
-  async function confirmReview(id, name, amount){
-    const v=parseFloat(String(amount).replace(',', '.'));
-    if(!name || !Number.isFinite(v)) throw new Error('Невалидни данни');
-    await saveEntry(name, +v.toFixed(2));
-    await delReview(id);
-  }
+  async function allEntries(){const rows=await idb.iterateAll();rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));return rows}
 
-  const side=document.getElementById('side'), btnSearch=document.getElementById('btnSearch');
-  const tabSearch=document.getElementById('tabSearch'), tabReview=document.getElementById('tabReview');
-  const secSearch=document.getElementById('secSearch'), secReview=document.getElementById('secReview');
-  const q=document.getElementById('q'), rowsEl=document.getElementById('rows'), sugg=document.getElementById('suggestions');
-  const sumOkEl=document.getElementById('sumOk'), sumReviewEl=document.getElementById('sumReview');
-  const revList=document.getElementById('revList'), revCount=document.getElementById('revCount');
+  // Панел / табове
+  const panel=document.getElementById('panel');
+  const btnSearch=document.getElementById('btnSearch');
+  const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
+  const tabButtons=[...document.querySelectorAll('.tab')];
+  const tabSearch=document.getElementById('tab-search');
+  const tabReview=document.getElementById('tab-review');
+  const reviewList=document.getElementById('reviewList');
 
-  function openTab(which){
-    const isSearch = which==='search';
-    tabSearch.setAttribute('aria-selected', isSearch?'true':'false');
-    tabReview.setAttribute('aria-selected', !isSearch?'true':'false');
-    secSearch.classList.toggle('open', isSearch);
-    secReview.classList.toggle('open', !isSearch);
-  }
-  tabSearch.onclick=()=>openTab('search');
-  tabReview.onclick=()=>openTab('review');
+  btnSearch.onclick=async()=>{panel.style.display=panel.style.display?'':'block';resize();if(panel.style.display){await refreshSuggestions();renderSearch(q.value);renderReview()}};
+  tabButtons.forEach(b=>b.onclick=()=>{
+    tabButtons.forEach(x=>x.classList.remove('active')); b.classList.add('active');
+    const t=b.dataset.tab; tabSearch.hidden=(t!=='search'); tabReview.hidden=(t!=='review');
+  });
 
-  btnSearch.onclick=async()=>{
-    side.classList.toggle('open'); resize();
-    if(side.classList.contains('open')){
-      await refreshSuggestions(); await renderSearch(q.value); await renderReview();
-      q.focus();
-    }
-  };
-
-  async function refreshSuggestions(){
-    sugg.innerHTML=''; const seen=new Set();
-    await dbNames.each(rec=>{ if(!seen.has(rec.name)){ seen.add(rec.name); const o=document.createElement('option'); o.value=rec.name; sugg.appendChild(o); } });
-  }
-
+  async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
   async function renderSearch(term){
     const t=(term||'').trim().toLowerCase();
-    const rows = await allRowsFlat();
-    rowsEl.innerHTML=''; let sumOk=0;
-    for(const r of rows){ if(t && !r.name.toLowerCase().includes(t)) continue;
-      sumOk += r.amount;
+    const rows=await allEntries();
+    const items=[];
+    rows.forEach(r=>{
+      if(!t || r.name.toLowerCase().includes(t)){
+        r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts}));
+      }
+    });
+    items.sort((a,b)=>a.name.localeCompare(b.name,'bg') || a.ts-b.ts);
+    let total=0; rowsEl.innerHTML='';
+    items.forEach(x=>{
+      total+=x.amount;
       const d=document.createElement('div'); d.className='row';
-      const when=new Date(r.ts).toLocaleString('bg-BG',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
-      d.innerHTML=`<div><strong>${r.name}</strong><div class="muted">${when}</div></div><div><strong>${r.amount.toFixed(2)} лв</strong></div>`;
+      const when=new Date(x.ts).toLocaleString('bg-BG',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
+      d.innerHTML=`<span>${x.name}</span><strong>${x.amount.toFixed(2)} лв</strong><small>${when}</small>`;
       rowsEl.appendChild(d);
-    }
-    const rev = await listReview();
-    const sumRev = rev.reduce((s,x)=> s + (Number.isFinite(+x.suggestedAmount)? +(+x.suggestedAmount).toFixed(2) : 0), 0);
-    sumOkEl.textContent = `Сигурни: ${sumOk.toFixed(2)} лв`;
-    sumReviewEl.textContent = `За преглед: ${sumRev.toFixed(2)} лв`;
+    });
+    sumEl.textContent=`${total.toFixed(2)} лв`;
   }
   q.addEventListener('input',()=>renderSearch(q.value));
 
   async function renderReview(){
-    const items = await listReview();
-    revCount.textContent = String(items.length);
-    revList.innerHTML = '';
-    for(const it of items){
-      const row=document.createElement('div'); row.className='rev-row';
-
-      const img=document.createElement('img'); img.src=it.image; img.alt='ред'; img.onclick=()=>openOverlay(it.image);
-
-      const nameInp=document.createElement('input'); nameInp.placeholder='Име (кирилица)'; nameInp.value=it.suggestedName||'';
-      const amtInp=document.createElement('input'); amtInp.placeholder='Сума'; amtInp.inputMode='decimal';
-      amtInp.value=(Number.isFinite(+it.suggestedAmount)? (+it.suggestedAmount).toFixed(2) : '');
-
-      const info=document.createElement('div'); info.className='muted'; info.style.fontSize='.8rem';
-      info.textContent = it.rawText ? `OCR: ${it.rawText}` : 'OCR: (без текст)';
-
-      const left=document.createElement('div'); left.appendChild(nameInp); left.appendChild(amtInp); left.appendChild(info);
-
-      const okBtn=document.createElement('button'); okBtn.className='btn'; okBtn.textContent='✅ Потвърди';
-      okBtn.onclick=async()=>{
-        try{ await confirmReview(it.id, nameInp.value, amtInp.value); toast('Записано'); await renderReview(); await renderSearch(q.value); }
-        catch(e){ console.error(e); toast('Грешка при потвърждаване'); }
+    const items=await idb.listReview();
+    reviewList.innerHTML='';
+    items.forEach(item=>{
+      const card=document.createElement('div'); card.className='review-card';
+      card.innerHTML=`
+        <div class="review-head"><strong>#${item.id}</strong><span class="pill">за преглед</span></div>
+        <img class="thumb" src="${item.thumb}" alt="ред #${item.id}"/>
+        <div class="field" style="margin-top:.5rem">
+          <input data-k="name" placeholder="Име (кирилица)"/>
+          <input data-k="amount" placeholder="Сума (напр. 2,40)"/>
+        </div>
+        <div style="font-size:.85rem;opacity:.8">OCR: ${item.text||'—'}</div>
+        <div class="review-actions">
+          <button class="btn" data-act="confirm">Потвърди</button>
+          <button class="btn" data-act="delete">Изтрий</button>
+        </div>
+      `;
+      card.querySelector('.thumb').onclick=()=>{window.open(item.thumb,'_blank')};
+      card.querySelector('[data-act="confirm"]').onclick=async()=>{
+        const name=card.querySelector('input[data-k="name"]').value.trim();
+        const amountRaw=card.querySelector('input[data-k="amount"]').value.trim().replace(' ','');
+        const amount = parseAmount(amountRaw);
+        if(!name || !/[\p{Script=Cyrillic}]/u.test(name)) return toast('Въведи име на кирилица');
+        if(amount==null) return toast('Въведи сума с , или . (напр. 2,40)');
+        await saveEntry(name,amount); await idb.delReview(item.id);
+        toast('Добавено'); renderSearch(q.value); renderReview();
       };
-      const delBtn=document.createElement('button'); delBtn.className='btn'; delBtn.textContent='🗑️ Изтрий';
-      delBtn.onclick=async()=>{ try{ await delReview(it.id); toast('Изтрито'); await renderReview(); } catch(e){ console.error(e); toast('Грешка при изтриване'); } };
-      const actions=document.createElement('div'); actions.className='actions'; actions.appendChild(okBtn); actions.appendChild(delBtn);
-
-      row.appendChild(img);
-      row.appendChild(left);
-
-      const right=document.createElement('div');
-      const tag=document.createElement('span'); tag.className='tag'; tag.textContent='за преглед';
-      right.appendChild(tag); right.appendChild(document.createElement('div')); right.appendChild(actions);
-      row.appendChild(right);
-
-      revList.appendChild(row);
-    }
+      card.querySelector('[data-act="delete"]').onclick=async()=>{await idb.delReview(item.id); renderReview()};
+      reviewList.appendChild(card);
+    });
   }
 
-  // ===== Обработка на изображение + сегментация на редове =====
-  function makeBinary(src){
-    const dpr=devicePixelRatio||1, scale=6;
-    const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
-    const out=document.createElement('canvas'); out.width=w; out.height=h;
-    const o=out.getContext('2d',{willReadFrequently:true}); o.drawImage(src,0,0,w,h);
-
-    // сиво + махане на сините линии
-    const img=o.getImageData(0,0,w,h), d=img.data;
-    for(let i=0;i<d.length;i+=4){
-      const r=d[i], g=d[i+1], b=d[i+2];
-      const blue = b>60 && b>r+20 && b>g+10;
-      if (blue){ d[i]=d[i+1]=d[i+2]=255; d[i+3]=255; continue; }
-      const y=0.299*r+0.587*g+0.114*b; d[i]=d[i+1]=d[i+2]=y; d[i+3]=255;
-    }
-    o.putImageData(img,0,0);
-
-    // лека медианна филтрация 3x3
-    const srcData=o.getImageData(0,0,w,h), S=srcData.data;
-    const dstData=o.createImageData(w,h), D=dstData.data;
-    const win=new Uint8Array(9);
-    for(let y=1;y<h-1;y++){
-      for(let x=1;x<w-1;x++){
-        let k=0;
-        for(let yy=-1;yy<=1;yy++) for(let xx=-1;xx<=1;xx++) win[k++]=S[((y+yy)*w+(x+xx))*4];
-        win.sort((a,b)=>a-b); const med=win[4]; const i=(y*w+x)*4;
-        D[i]=D[i+1]=D[i+2]=med; D[i+3]=255;
-      }
-    }
-    o.putImageData(dstData,0,0);
-
-    // адаптивен праг по ленти
-    const g=o.getImageData(0,0,w,h), G=g.data, band=32;
-    for(let y=0;y<h;y+=band){
-      const y2=Math.min(h,y+band); let sum=0,n=0;
-      for(let yy=y;yy<y2;yy++) for(let x=0;x<w;x++){ sum+=G[(yy*w+x)*4]; n++; }
-      const mean=sum/n, T=mean-12;
-      for(let yy=y;yy<y2;yy++) for(let x=0;x<w;x++){
-        const i=(yy*w+x)*4, v=G[i]<T?0:255; G[i]=G[i+1]=G[i+2]=v; G[i+3]=255;
-      }
-    }
-    o.putImageData(g,0,0);
-    return out;
+  function parseAmount(s){
+    if(!s) return null;
+    s=s.replace(',', '.');
+    if(!/^\d+(\.\d{1,2})$/.test(s)) return null; // Искаме ТЕЛЕСЕН разделител, за да избегнем 230 вместо 2,30
+    const v=parseFloat(s);
+    return Number.isFinite(v)? +v.toFixed(2):null;
   }
 
-  function segmentLines(bin){
-    const w=bin.width,h=bin.height, ctxb=bin.getContext('2d',{willReadFrequently:true});
-    const { data }=ctxb.getImageData(0,0,w,h);
+  // ——— сегментация: режем редове с мастило и правим мини-изображения
+  function splitCanvasToLines(src){
+    const dpr=window.devicePixelRatio||1;
+    const w=src.width, h=src.height;
+    const ctx2=src.getContext('2d',{willReadFrequently:true});
+    const img=ctx2.getImageData(0,0,w,h).data;
 
-    // хор. проекция + изглаждане
-    const rowSum=new Float32Array(h);
-    for(let y=0;y<h;y++){ let s=0,off=y*w*4; for(let x=0;x<w;x++){ if(data[off]===0) s++; off+=4; } rowSum[y]=s; }
-    const smoothed=new Float32Array(h);
-    const win=5, inv=1/(win*2+1);
-    for(let y=0;y<h;y++){ let s=0; for(let k=-win;k<=win;k++){ const yy=Math.min(h-1,Math.max(0,y+k)); s+=rowSum[yy]; } smoothed[y]=s*inv; }
-
-    const maxRow=Math.max(...smoothed); const thresh=Math.max(12, maxRow*0.25);
-    const boxes=[]; let inRun=false,y0=0; const pad=10, minH=28;
+    // вертикален профил на „мастило“
+    const inkRow=new Array(h).fill(0);
     for(let y=0;y<h;y++){
-      if(!inRun && smoothed[y]>thresh){ inRun=true;y0=y; }
-      else if(inRun && smoothed[y]<=thresh){
-        const y1=y-1; if(y1-y0>=minH) boxes.push({x:0,y:Math.max(0,y0-pad),w:w,h:Math.min(h-1,y1+pad)-Math.max(0,y0-pad)+1}); inRun=false;
+      let acc=0;
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;
+        // при тъмeн фон и светло мастило: пиксел е „мастило“, ако е достатъчно светъл
+        const lum=0.299*img[i]+0.587*img[i+1]+0.114*img[i+2];
+        if(lum>230) acc++;
+      }
+      inkRow[y]=acc;
+    }
+    const TH=Math.max(8, Math.floor(w*0.002)); // праг мастило за ред
+
+    const bands=[];
+    let inBand=false, y0=0;
+    for(let y=0;y<h;y++){
+      if(!inBand && inkRow[y]>TH){inBand=true;y0=y;}
+      if(inBand && inkRow[y]<=TH){
+        const y1=y;
+        if(y1-y0>Math.round(18*dpr)) bands.push([Math.max(0,y0-4*dpr), Math.min(h, y1+4*dpr)]);
+        inBand=false;
       }
     }
-    if(inRun){ const y1=h-1; if(y1-y0>=minH) boxes.push({x:0,y:Math.max(0,y0-pad),w:w,h:Math.min(h-1,y1+pad)-Math.max(0,y0-pad)+1}); }
+    if(inBand) bands.push([Math.max(0,y0-4*dpr), h]);
 
-    const lines=[];
-    for (let i=0;i<boxes.length;i++){
-      const b=boxes[i], c=document.createElement('canvas'); c.width=b.w; c.height=b.h;
-      c.getContext('2d').drawImage(bin,b.x,b.y,b.w,b.h,0,0,b.w,b.h);
-      const dataURL=c.toDataURL('image/png');
-      lines.push({ id:`L${Date.now()}_${i}`, base64:dataURL.split(',')[1], dataURL });
-    }
-    return lines;
+    // към dataURL за всяка лента
+    const outs=[];
+    const pad=8*dpr;
+    bands.forEach(([a,b])=>{
+      // хоризонтален bbox в лентата
+      let minX=w, maxX=0;
+      for(let y=a;y<b;y++){
+        for(let x=0;x<w;x++){
+          const i=(y*w+x)*4; const lum=0.299*img[i]+0.587*img[i+1]+0.114*img[i+2];
+          if(lum>230){ if(x<minX)minX=x; if(x>maxX)maxX=x; }
+        }
+      }
+      if(maxX<=minX) return;
+      const cw=Math.min(w, maxX+pad)-Math.max(0,minX-pad);
+      const ch=b-a+pad*2;
+      const crop=document.createElement('canvas'); crop.width=cw; crop.height=ch;
+      const c2=crop.getContext('2d'); c2.drawImage(src, Math.max(0,minX-pad), Math.max(0,a-pad), cw, ch, 0,0,cw,ch);
+      outs.push(crop.toDataURL('image/png'));
+    });
+    return outs;
   }
 
-  async function sendBatch(items){
-    const payload = { images: items.map(x=>({id:x.id,imageBase64:x.base64})) };
-    const r=await fetch(OCR_BATCH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    if(!r.ok) throw new Error(`HTTP ${r.status}`); return await r.json();
-  }
-  async function sendWhole(imgDataURL){
-    const r=await fetch(OCR_ALL_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64: imgDataURL.split(',')[1]})});
-    if(!r.ok) throw new Error(`HTTP ${r.status}`); return await r.json();
+  async function sendPieces(pieces){
+    const payload={ pieces: pieces.map(p=>({imageBase64:p.split(',')[1]})), mode:'line' };
+    const r=await fetch(OCR_URL,{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json(); if(!r.ok || !j.ok) throw new Error(j?.error||('HTTP '+r.status));
+    return j;
   }
 
-  // ==== Запази ====
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
+      btnSave.disabled=true;
+      // 1) Снимка
       step('Запис: снимка…');
       const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a'); a.href=url; a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
-      document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},0);
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
+      document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      const bin=makeBinary(canvas);
-      const lines=segmentLines(bin);
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // 2) Сегментация → ленти
+      const pieces=splitCanvasToLines(canvas);
 
-      if(!lines.length){ toast('Не открих редове. Пиши по линиите / по-едро.'); return; }
+      // 3) Нов лист веднага — можеш да пишеш
+      const preClear=canvas.getContext('2d'); preClear.clearRect(0,0,canvas.width,canvas.height);
+
+      if(!pieces.length){ toast('Няма текст за OCR'); btnSave.disabled=false; return; }
 
       step('OCR…');
-      (async()=>{
-        try{
-          const resp = await sendBatch(lines.map(x=>({id:x.id, base64:x.base64})));
-          const byId = Object.fromEntries(lines.map(x=>[x.id,x]));
-          let okCount=0, reviewCount=0;
+      const result=await sendPieces(pieces);
 
-          for(const e of (resp?.entries||[])){
-            const src = byId[e.id]; if (!src) continue;
-            if (e.ok && e.name && Number.isFinite(+e.amount)) {
-              await saveEntry(e.name, +(+e.amount).toFixed(2)); okCount++;
-            } else {
-              await addReview({
-                image: src.dataURL,
-                rawText: e.rawText || '',
-                suggestedName: (e.name||''),
-                suggestedAmount: (Number.isFinite(+e.amount)? +(+e.amount).toFixed(2) : ''),
-                confidence: typeof e.confidence==='number'? e.confidence : null,
-                ts: Date.now()
-              });
-              reviewCount++;
-            }
-          }
-
-          // Ако ВСИЧКО отиде „за преглед“, пробваме целия лист
-          if (okCount===0 && reviewCount===lines.length){
-            const wholeDataURL = bin.toDataURL('image/png');
-            const all = await sendWhole(wholeDataURL);
-            if (Array.isArray(all?.entries)){
-              for (const it of all.entries){
-                if (it?.name && Number.isFinite(+it.amount)){
-                  await saveEntry(it.name, +(+it.amount).toFixed(2));
-                  okCount++;
-                }
-              }
-            }
-          }
-
-          toast(`Готово: ${okCount} записани, ${reviewCount} за преглед`);
-          await refreshSuggestions(); await renderSearch(q.value); await renderReview();
-          step('Готово');
-        }catch(err){ console.error('[OCR]',err); toast('OCR грешка (виж конзолата)'); step('Грешка'); }
-      })();
-
-    }catch(err){ console.error(err); toast('Грешка при „Запази“'); }
+      // 4) Сигурни редове
+      if(Array.isArray(result.entries)){
+        for(const e of result.entries){ await saveEntry(e.name, e.amount); }
+      }
+      // 5) За преглед
+      if(Array.isArray(result.review)){
+        for(const r of result.review){
+          await idb.addReview({thumb:r.thumb,text:r.text||''});
+        }
+      }
+      toast(`Записани: ${(result.entries||[]).length} • За преглед: ${(result.review||[]).length}`);
+      step('Готово');
+      renderSearch(q.value); renderReview();
+    }catch(err){
+      console.error('[OCR]',err);
+      toast('OCR грешка'); step('Грешка');
+    }finally{ btnSave.disabled=false }
   };
 
-  // първоначално
-  (async()=>{ await refreshSuggestions(); await renderSearch(''); })();
+  (async()=>{await refreshSuggestions(); renderReview()})();
 });
 </script>
 </body>
