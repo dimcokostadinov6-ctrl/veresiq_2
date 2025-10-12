@@ -24,7 +24,7 @@
   .panel{width:min(380px,92vw);background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;display:none}
   .panel.open{display:block}
   .panel h3{margin:.2rem 0 .6rem;font-weight:600}
-  .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
+  .field{display:flex;gap:.5rem;align-items:center;margin:.25рем 0 .75rem}
   .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
   .list{font-size:.95rem;line-height:1.4;max-height:calc(100vh - 160px);overflow:auto}
@@ -64,7 +64,6 @@
   <div id="toast" class="toast"></div>
 
 <script>
-// ← Тук сложи точния Cloud Run URL (без /ocr накрая; ще го добавя автоматично):
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 
@@ -103,7 +102,7 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
   function toast(m,ms=2400){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
-  const step=t=>hint.textContent=t;
+  const step=t=>{hint.textContent=t};
 
   async function addItems(items){
     for(const it of items){
@@ -144,14 +143,14 @@ window.addEventListener('DOMContentLoaded',()=>{
 
       const dataURL=canvas.toDataURL('image/png');
       // чистим листа веднага – можеш да продължиш да пишеш
-      const ctx2=ctx; ctx2.clearRect(0,0,canvas.width,canvas.height);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
 
       step('OCR…');
       callOCR(dataURL).then(async resp=>{
         if(resp?.ok && Array.isArray(resp.entries) && resp.entries.length){
           await addItems(resp.entries); toast(`Записани редове: ${resp.entries.length}`);
           if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value)}
-        }else{ toast('Не открих „Име - сума“. Пример: Иван - 3,20'); }
+        }else{ toast('Не открих „Име - сума“. Пример: Иван - 2,30'); }
         step('Готово');
       }).catch(err=>{ console.error('[OCR]',err); toast('OCR грешка (виж конзолата)'); step('Грешка'); });
 
