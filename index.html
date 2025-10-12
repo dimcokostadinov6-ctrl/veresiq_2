@@ -69,10 +69,10 @@
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 
-/*** IndexedDB — стабилен open + auto-reset при проблем ***/
+/*** IndexedDB — стабилен open (+ опция за пълно нулиране) ***/
 const DB_NAME = 'veresia-db';
 const STORE   = 'names';
-const FORCE_DB_RESET = false; // сложи true ако искаш да чисти базата при всеки лоуд (бета)
+const FORCE_DB_RESET = false; // сложи true ако искаш всеки път да чисти (бета)
 
 function deleteDB(){
   return new Promise((res,rej)=>{
@@ -86,13 +86,14 @@ function deleteDB(){
 function openDB(){
   return new Promise((resolve, reject)=>{
     const doOpen = ()=>{
-      const req = indexedDB.open(DB_NAME); // без версия → винаги последната
+      const req = indexedDB.open(DB_NAME); // без версия → последната налична
       req.onupgradeneeded = ()=>{ const db=req.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
       req.onsuccess = ()=> resolve(req.result);
       req.onerror   = async()=>{
-        // ако удари VersionError/InvalidState → чистим и пробваме наново (ок за бета)
         if (req.error && (req.error.name==='VersionError' || req.error.name==='InvalidStateError')) {
-          try { await deleteDB(); const again = indexedDB.open(DB_NAME);
+          try {
+            await deleteDB();
+            const again = indexedDB.open(DB_NAME);
             again.onupgradeneeded = ()=>{ const db=again.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
             again.onsuccess = ()=> resolve(again.result);
             again.onerror   = ()=> reject(again.error);
@@ -121,7 +122,167 @@ const idb = {
   iterate:(cb)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))
 };
 
-/*** UI / Canvas ***/
+/*** OCR Tuning + по-точен пре-процес и рязане по редове ***/
+const OCR_TUNING = { scale: 4, splitLines: true, maxLines: 15 };
+
+// Otsu + премахване на сини линии + инверсия + авто-кроп до писаното
+function prepForOCR(src){
+  const dpr = window.devicePixelRatio || 1;
+  const scale = OCR_TUNING.scale;
+  const w = Math.floor(src.width / dpr * scale);
+  const h = Math.floor(src.height / dpr * scale);
+  const out = document.createElement('canvas'); out.width=w; out.height=h;
+  const ctx = out.getContext('2d', { willReadFrequently:true });
+  ctx.drawImage(src, 0, 0, w, h);
+
+  let img = ctx.getImageData(0,0,w,h), d = img.data;
+
+  // грейскейл + премахване на синьо + инверсия (бялото мастило -> тъмно)
+  for (let i=0;i<d.length;i+=4){
+    const r=d[i], g=d[i+1], b=d[i+2];
+    const isBlue = (b > r + 10) && (b > g + 8);
+    if (isBlue){ d[i]=d[i+1]=d[i+2]=255; continue; }
+    let lum = (0.299*r + 0.587*g + 0.114*b);
+    lum = 255 - lum; d[i]=d[i+1]=d[i+2]=lum;
+  }
+  ctx.putImageData(img,0,0);
+
+  // Otsu
+  const hist = new Uint32Array(256);
+  for (let i=0;i<d.length;i+=4) hist[d[i]]++;
+  let sum=0; for(let i=0;i<256;i++) sum += i*hist[i];
+  const tot = (d.length/4)|0;
+  let sumB=0,wB=0,varMax=0,thr=127;
+  for (let i=0;i<256;i++){
+    wB += hist[i]; if(!wB) continue;
+    const wF = tot - wB; if(!wF) break;
+    sumB += i*hist[i];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const between = wB*wF*(mB-mF)*(mB-mF);
+    if (between > varMax){ varMax=between; thr=i; }
+  }
+  for (let i=0;i<d.length;i+=4){
+    const v = d[i] < thr ? 0 : 255;
+    d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+
+  // махане на единични точки (despeckle)
+  const nb = (x,y,w,h,arr)=>{ let c=0; for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){
+    if(!xx && !yy) continue; const X=x+xx,Y=y+yy; if(X<0||Y<0||X>=w||Y>=h) continue;
+    if (arr[(Y*w+X)*4]===0) c++;
+  } return c; };
+  for (let y=1;y<h-1;y++){
+    for (let x=1;x<w-1;x++){
+      const i=(y*w+x)*4;
+      if (d[i]===0 && nb(x,y,w,h,d)<=1){ d[i]=d[i+1]=d[i+2]=255; }
+    }
+  }
+  ctx.putImageData(img,0,0);
+
+  // авто-кроп до мастилото
+  let minX=w, minY=h, maxX=-1, maxY=-1;
+  for (let y=0;y<h;y++){
+    for (let x=0;x<w;x++){
+      if (d[(y*w+x)*4]===0){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; }
+    }
+  }
+  if (maxX>=0){
+    const pad=12;
+    const x0=Math.max(0,minX-pad), y0=Math.max(0,minY-pad);
+    const x1=Math.min(w-1,maxX+pad), y1=Math.min(h-1,maxY+pad);
+    const cw=x1-x0+1, ch=y1-y0+1;
+    const c=document.createElement('canvas'); c.width=cw; c.height=ch;
+    c.getContext('2d').drawImage(out, x0, y0, cw, ch, 0, 0, cw, ch);
+    return c;
+  }
+  return out;
+}
+
+// рязане по хоризонтални линии (по-точно за OCR)
+function sliceLines(binaryCanvas){
+  const w=binaryCanvas.width, h=binaryCanvas.height;
+  const ctx=binaryCanvas.getContext('2d');
+  const img=ctx.getImageData(0,0,w,h), d=img.data;
+
+  const rows = new Uint32Array(h);
+  for (let y=0;y<h;y++){
+    let cnt=0;
+    for (let x=0;x<w;x++){ if (d[(y*w+x)*4]===0) cnt++; }
+    rows[y]=cnt;
+  }
+  const thresh = Math.max(3, Math.floor(w*0.006));
+  const ranges=[]; let inSeg=false, start=0;
+  for (let y=0;y<h;y++){
+    if (rows[y]>thresh){ if(!inSeg){inSeg=true; start=y;} }
+    else if(inSeg){ ranges.push([start,y]); inSeg=false; }
+  }
+  if(inSeg) ranges.push([start,h]);
+
+  const merged=[];
+  for(const [s,e] of ranges){
+    if(!merged.length) merged.push([s,e]);
+    else{
+      const last=merged[merged.length-1];
+      if (s - last[1] <= 6) last[1]=e; else merged.push([s,e]);
+    }
+  }
+
+  const canvases=[];
+  for(const [sy,ey] of merged){
+    const padY=6, y0=Math.max(0, sy-padY), y1=Math.min(h, ey+padY);
+    let minX=w, maxX=-1;
+    for(let x=0;x<w;x++){
+      let black=0;
+      for(let y=y0;y<y1;y++){ if (d[(y*w+x)*4]===0) black++; }
+      if (black>0){ if(x<minX)minX=x; if(x>maxX)maxX=x; }
+    }
+    if (maxX>=0){
+      const padX=10, x0=Math.max(0, minX-padX), x1=Math.min(w, maxX+padX);
+      const cw=x1-x0, ch=y1-y0;
+      const c=document.createElement('canvas'); c.width=cw; c.height=ch;
+      c.getContext('2d').drawImage(binaryCanvas, x0, y0, cw, ch, 0, 0, cw, ch);
+      canvases.push(c);
+    }
+  }
+  return canvases;
+}
+
+async function callOCR(dataURL, signal){
+  const r = await fetch(OCR_URL, {
+    method:'POST',
+    mode:'cors',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ imageBase64: dataURL.split(',')[1] }),
+    signal
+  });
+  const j = await r.json();
+  if(!r.ok || !j.ok) throw new Error(j?.error || ('HTTP '+r.status));
+  return Array.isArray(j.entries) ? j.entries : [];
+}
+
+/*** (опция) фъзи корекция на имената към вече познатите ***/
+function lev(a,b){
+  const m=a.length,n=b.length; const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++)dp[i][0]=i; for(let j=0;j<=n;j++)dp[0][j]=j;
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){
+    const c = a[i-1]===b[j-1] ? 0 : 1;
+    dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+c);
+  }
+  return dp[m][n];
+}
+
+async function normalizeName(raw){
+  const rows=[]; await idb.iterate(v=>rows.push(v.name));
+  let best=raw, bestD=1e9;
+  for(const name of rows){
+    const d=lev(raw.toLowerCase(), name.toLowerCase());
+    if (d<bestD){ best=name; bestD=d; }
+  }
+  return (bestD<=2 && best.length>=4) ? best : raw;
+}
+
+/*** UI / Canvas + логика ***/
 window.addEventListener('DOMContentLoaded',()=>{
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
@@ -181,8 +342,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts}));
       }
     });
-    // ▼ показваме в реда на писане
-    items.sort((a,b)=> a.ts - b.ts);
+    items.sort((a,b)=> a.ts - b.ts); // показваме по реда на писане
 
     let total=0; rowsEl.innerHTML='';
     items.forEach(x=>{
@@ -196,71 +356,46 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  // --- препроцес за OCR (бърз, както го имаш) ---
-  function prepForOCR(src){
-    const dpr=window.devicePixelRatio||1, scale=3;
-    const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
-    const out=document.createElement('canvas'); out.width=w; out.height=h;
-    const o=out.getContext('2d',{willReadFrequently:true});
-    o.drawImage(src,0,0,w,h);
-    let img=o.getImageData(0,0,w,h), d=img.data;
-    for(let i=0;i<d.length;i+=4){
-      const r=d[i], g=d[i+1], b=d[i+2];
-      const bright=r+g+b;
-      const isInk = bright>680;
-      const isBlue = b>60 && b>r+20 && b>g+10;
-      const v = isInk ? 0 : 255;
-      d[i]=d[i+1]=d[i+2]=(isBlue?255:v); d[i+3]=255;
-    }
-    o.putImageData(img,0,0);
-    const g2=o.getImageData(0,0,w,h), G=g2.data;
-    for(let y=1;y<h-1;y++){
-      for(let x=1;x<w-1;x++){
-        let s=0,c=0; for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){s+=G[((y+yy)*w+(x+xx))*4];c++}
-        const i=(y*w+x)*4; const mean=s/c;
-        const v=G[i]<mean-15?0:255; G[i]=G[i+1]=G[i+2]=v; G[i+3]=255;
-      }
-    }
-    o.putImageData(g2,0,0);
-    return out;
-  }
-
-  // --- OCR с таймаут и стабилен ред ---
-  async function sendToOCR(imgDataURL){
+  // --- OCR изпращане (на редове) + таймаут + фъзи имена ---
+  async function sendToOCRFromCanvas(binaryCanvas){
     try{
       step('OCR: изпращане…');
-      const base64 = imgDataURL.split(',')[1];
-
       const ctl = new AbortController();
-      const timeout = setTimeout(()=>ctl.abort(), 12000);
+      const timeout = setTimeout(()=>ctl.abort(), 15000);
 
-      const r = await fetch(OCR_URL, {
-        method:'POST',
-        mode:'cors',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ imageBase64: base64 }),
-        signal: ctl.signal
-      });
-      clearTimeout(timeout);
+      let total=0;
+      const baseTs = Date.now();
 
-      const j = await r.json();
-      if(!r.ok || !j.ok) throw new Error(j?.error || ('HTTP '+r.status));
-
-      if (Array.isArray(j.entries) && j.entries.length){
-        const baseTs = Date.now();
-        for (let i=0; i<j.entries.length; i++){
-          const e = j.entries[i];
-          await saveEntry(e.name, e.amount, baseTs + i);
+      if (OCR_TUNING.splitLines){
+        const parts = sliceLines(binaryCanvas).slice(0, OCR_TUNING.maxLines);
+        for (let i=0;i<parts.length;i++){
+          const dataURL = parts[i].toDataURL('image/png');
+          const entries = await callOCR(dataURL, ctl.signal);
+          for (let j=0;j<entries.length;j++){
+            const e = entries[j];
+            const fixedName = await normalizeName(e.name);
+            await saveEntry(fixedName, e.amount, baseTs + total + j);
+          }
+          total += entries.length;
         }
-        toast(`Записани редове: ${j.entries.length}`);
-        if(panel.classList.contains('open')){ await refreshSuggestions(); renderSearch(q.value); }
-      }else{
-        toast('Не открих „Име - сума“. Пример: Иван - 3,20');
+      } else {
+        const dataURL = binaryCanvas.toDataURL('image/png');
+        const entries = await callOCR(dataURL, ctl.signal);
+        for (let i=0;i<entries.length;i++){
+          const e = entries[i];
+          const fixedName = await normalizeName(e.name);
+          await saveEntry(fixedName, e.amount, baseTs + i);
+        }
+        total = entries.length;
       }
+
+      clearTimeout(timeout);
+      toast(total ? `Записани редове: ${total}` : 'Не открих „Име - сума“');
+      if(panel.classList.contains('open')){ await refreshSuggestions(); renderSearch(q.value); }
       step('Готово');
     }catch(err){
       console.error('[OCR] →', err);
-      toast(err.name === 'AbortError' ? 'OCR таймаут' : 'OCR грешка (виж конзолата)');
+      toast(err.name==='AbortError' ? 'OCR таймаут' : 'OCR грешка (виж конзолата)');
       step('Грешка');
     }
   }
@@ -275,12 +410,9 @@ window.addEventListener('DOMContentLoaded',()=>{
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      const pre=prepForOCR(canvas);
-      const dataURL=pre.toDataURL('image/png');
-
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-
-      void sendToOCR(dataURL);
+      const bin=prepForOCR(canvas);           // по-точен бинаризиран кадър
+      ctx.clearRect(0,0,canvas.width,canvas.height); // нов лист веднага
+      void sendToOCRFromCanvas(bin);          // OCR във фона (на редове)
     }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
   };
 
