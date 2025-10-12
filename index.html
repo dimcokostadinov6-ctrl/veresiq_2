@@ -64,7 +64,7 @@
   <div id="toast" class="toast"></div>
 
 <script>
-// ← Сложи точния Cloud Run URL (без /ocr накрая; добавяме го автоматично):
+// ← твоя Cloud Run URL (без /ocr; добавяме го)
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 const OCR_BATCH_URL = OCR_URL.replace(/\/ocr\/?$/, "/ocr-batch");
@@ -93,14 +93,19 @@ window.addEventListener('DOMContentLoaded',()=>{
     ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineCap='round';ctx.lineJoin='round';
     ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
   }
-  addEventListener('resize',resize,{passive:true}); addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true}); resize();
+  addEventListener('resize',resize,{passive:true});
+  addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
+  resize();
 
   const isPen=e=>e.pointerType==='pen';
   const pxy=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
 
   canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pxy(e)});
   canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pxy(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
-  const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
+  const stop=()=>{drawing=false;last=null};
+  canvas.addEventListener('pointerup',stop);
+  canvas.addEventListener('pointercancel',stop);
+  canvas.addEventListener('pointerleave',stop);
 
   const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
   function toast(m,ms=2400){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
@@ -129,38 +134,68 @@ window.addEventListener('DOMContentLoaded',()=>{
   q.addEventListener('input',()=>renderSearch(q.value));
 
   // ====== Подготовка + сегментация по редове (всяко име по отделно) ======
+
+  // По-мека бинаризация: без "удебеляване" (дилатация), по-високо скалиране и адаптивен праг
   function makeBinary(src){
-    const dpr=devicePixelRatio||1, scale=4;
+    const dpr=devicePixelRatio||1, scale=5; // по-голямо скалиране за по-четливи цифри
     const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
     const out=document.createElement('canvas'); out.width=w; out.height=h;
     const o=out.getContext('2d',{willReadFrequently:true});
     o.drawImage(src,0,0,w,h);
 
-    // 1) взимаме пикселите
-    let img=o.getImageData(0,0,w,h), d=img.data;
-
-    // 2) премахване на линиите/фон; мастилото -> черно, фон -> бяло
+    // 1) към сиво
+    const img=o.getImageData(0,0,w,h), d=img.data;
     for(let i=0;i<d.length;i+=4){
       const r=d[i], g=d[i+1], b=d[i+2];
       const blueLine = b>60 && b>r+20 && b>g+10;
       if (blueLine){ d[i]=d[i+1]=d[i+2]=255; d[i+3]=255; continue; }
       const y = 0.299*r + 0.587*g + 0.114*b;
-      const v = y<170 ? 0 : 255;
-      d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+      d[i]=d[i+1]=d[i+2]=y; d[i+3]=255;
     }
     o.putImageData(img,0,0);
 
-    // 3) леко „удебеляване“ на щриха (дилатация 3x1)
-    const img2=o.getImageData(0,0,w,h), p=img2.data;
+    // 2) лек медианен филтър 3x3 за шум (без да „сгъстява“ цифрите)
+    const srcData=o.getImageData(0,0,w,h), S=srcData.data;
+    const dstData=o.createImageData(w,h), D=dstData.data;
+    const kx=[-1,0,1], ky=[-1,0,1]; const window=new Uint8Array(9);
     for(let y=1;y<h-1;y++){
       for(let x=1;x<w-1;x++){
-        let black=0;
-        for(let xx=-1;xx<=1;xx++){ if(p[(y*w+(x+xx))*4]===0) black++; }
-        const i=(y*w+x)*4; const v=black>=2?0:p[i];
-        p[i]=p[i+1]=p[i+2]=v; p[i+3]=255;
+        let idx=0;
+        for(let yy of ky){
+          for(let xx of kx){
+            window[idx++] = S[((y+yy)*w + (x+xx))*4];
+          }
+        }
+        window.sort((a,b)=>a-b);
+        const med=window[4];
+        const i=(y*w+x)*4;
+        D[i]=D[i+1]=D[i+2]=med; D[i+3]=255;
       }
     }
-    o.putImageData(img2,0,0);
+    o.putImageData(dstData,0,0);
+
+    // 3) адаптивен праг по лента (бърза локална бинаризация)
+    const g=o.getImageData(0,0,w,h), G=g.data;
+    const band=32; // височина на лентата
+    for(let y=0;y<h;y+=band){
+      const y2=Math.min(h,y+band);
+      // средно в лентата
+      let sum=0, n=0;
+      for(let yy=y;yy<y2;yy++){
+        for(let x=0;x<w;x++){ sum+=G[(yy*w+x)*4]; n++; }
+      }
+      const mean = sum/n;
+      const T = mean - 12; // малко под средното → подчертава черното
+      for(let yy=y;yy<y2;yy++){
+        for(let x=0;x<w;x++){
+          const i=(yy*w+x)*4;
+          const v= G[i] < T ? 0 : 255;
+          G[i]=G[i+1]=G[i+2]=v; G[i+3]=255;
+        }
+      }
+    }
+    o.putImageData(g,0,0);
+
     return out;
   }
 
@@ -169,14 +204,14 @@ window.addEventListener('DOMContentLoaded',()=>{
     const ctxb=bin.getContext('2d',{willReadFrequently:true});
     const { data } = ctxb.getImageData(0,0,w,h);
 
-    // хоризонтален профил: брой черни пиксели по ред
+    // хоризонтален профил
     const rowSum=new Uint32Array(h);
     for(let y=0;y<h;y++){
       let s=0, off=y*w*4;
       for(let x=0;x<w;x++){ if(data[off]===0) s++; off+=4; }
       rowSum[y]=s;
     }
-    const thresh = Math.max(8, Math.floor(w*0.01));
+    const thresh = Math.max(10, Math.floor(w*0.012)); // малко по-строг праг
 
     const boxes=[];
     let inRun=false, y0=0;
@@ -184,50 +219,60 @@ window.addEventListener('DOMContentLoaded',()=>{
       if(!inRun && rowSum[y]>thresh){ inRun=true; y0=y; }
       else if(inRun && rowSum[y]<=thresh){
         const y1=y-1;
-        if (y1-y0>6){
-          boxes.push({x:0,y:Math.max(0,y0-3),w:w,h:Math.min(h-1,y1+3)-Math.max(0,y0-3)+1});
+        if (y1-y0>8){
+          boxes.push({x:0,y:Math.max(0,y0-4),w:w,h:Math.min(h-1,y1+4)-Math.max(0,y0-4)+1});
         }
         inRun=false;
       }
     }
-    if(inRun){ const y1=h-1; if (y1-y0>6) boxes.push({x:0,y:Math.max(0,y0-3),w:w,h:Math.min(h-1,y1+3)-Math.max(0,y0-3)+1}); }
+    if(inRun){ const y1=h-1; if (y1-y0>8) boxes.push({x:0,y:Math.max(0,y0-4),w:w,h:Math.min(h-1,y1+4)-Math.max(0,y0-4)+1}); }
 
     const lines=[];
     for(const b of boxes){
       const c=document.createElement('canvas'); c.width=b.w; c.height=b.h;
       c.getContext('2d').drawImage(bin,b.x,b.y,b.w,b.h,0,0,b.w,b.h);
-      lines.push(c.toDataURL('image/png').split(',')[1]); // само base64
+      lines.push(c.toDataURL('image/png').split(',')[1]); // base64 без префикс
     }
     return lines;
   }
 
   async function sendBatch(base64Arr){
-    const r=await fetch(OCR_BATCH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imagesBase64:base64Arr})});
-    if(!r.ok) throw new Error(`HTTP ${r.status}`); return await r.json();
+    const r=await fetch(OCR_BATCH_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({imagesBase64:base64Arr})
+    });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
   }
 
+  const panel=document.getElementById('searchPanel');
   const btnSave=document.getElementById('btnSave');
+  const q=document.getElementById('q');
+  const rowsEl=document.getElementById('rows');
+  const sumEl=document.getElementById('sum');
+  const sugg=document.getElementById('suggestions');
+
   btnSave.onclick=async()=>{
     try{
       step('Запис: снимка…');
-      // 1) снимка за теб
+      // 1) снимка
       const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a'); a.href=url; a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},0);
 
-      // 2) сегментация на РЕДОВЕ (всяко име по отделно)
+      // 2) сегментация на редове
       const bin = makeBinary(canvas);
       const linesB64 = segmentLines(bin);
 
-      // 3) чистим листа веднага — пишеш нов лист
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // 3) чистим платното – пишеш спокойно нов лист
+      const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      // 4) OCR на фон: пращаме точно редовете
+      // 4) OCR на фон – всеки ред поотделно
       step('OCR…');
-      if (!linesB64.length){
-        toast('Не открих редове. Пиши по линиите или по-едро.'); step('Готово'); return;
-      }
+      if (!linesB64.length){ toast('Не открих редове. Пиши по линиите/по-едро.'); step('Готово'); return; }
+
       sendBatch(linesB64).then(async resp=>{
         const arr = Array.isArray(resp?.entries) ? resp.entries : [];
         if (arr.length){
@@ -246,6 +291,11 @@ window.addEventListener('DOMContentLoaded',()=>{
 
     }catch(e){ console.error(e); toast('Грешка при „Запази“'); step('Грешка'); }
   };
+
+  async function refreshSuggestions(){const seen=new Set();sugg.innerHTML='';await idb.each(rec=>{if(!seen.has(rec.name)){seen.add(rec.name);const o=document.createElement('option');o.value=rec.name;sugg.appendChild(o)}});}
+  async function allRowsFlat(){const rows=[];await idb.each(rec=>{for(const it of rec.items)rows.push({name:rec.name,amount:it.amount,ts:it.ts})});rows.sort((a,b)=>b.ts-a.ts);return rows;}
+  async function renderSearch(term){const t=(term||'').trim().toLowerCase();const rows=await allRowsFlat();const hit=rows.filter(r=>r.name.toLowerCase().includes(t));let s=0;rowsEl.innerHTML='';for(const r of hit){s+=r.amount;const d=document.createElement('div');d.className='row';d.innerHTML=`<span>${r.name}</span><strong>${r.amount.toFixed(2)} лв</strong>`;rowsEl.appendChild(d)}sumEl.textContent=`${s.toFixed(2)} лв`;}
+  q.addEventListener('input',()=>renderSearch(q.value));
 
   (async()=>{await refreshSuggestions()})();
 });
