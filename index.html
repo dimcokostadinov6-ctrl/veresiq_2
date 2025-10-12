@@ -69,15 +69,54 @@
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 
-/*** IndexedDB ***/
-const DB_NAME='veresia-db', STORE='names', DB_VER=1;
-function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
-r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);};
-r.onerror=()=>rej(r.error);
-r.onsuccess=()=>{const tx=r.result.transaction(STORE,mode);const s=tx.objectStore(STORE);
-Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
-const idb={
-  get:k=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
+/*** IndexedDB — стабилен open + auto-reset при проблем ***/
+const DB_NAME = 'veresia-db';
+const STORE   = 'names';
+const FORCE_DB_RESET = false; // сложи true ако искаш да чисти базата при всеки лоуд (бета)
+
+function deleteDB(){
+  return new Promise((res,rej)=>{
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = ()=>res();
+    req.onerror   = ()=>rej(req.error);
+    req.onblocked = ()=>rej(new Error('deleteDatabase blocked'));
+  });
+}
+
+function openDB(){
+  return new Promise((resolve, reject)=>{
+    const doOpen = ()=>{
+      const req = indexedDB.open(DB_NAME); // без версия → винаги последната
+      req.onupgradeneeded = ()=>{ const db=req.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror   = async()=>{
+        // ако удари VersionError/InvalidState → чистим и пробваме наново (ок за бета)
+        if (req.error && (req.error.name==='VersionError' || req.error.name==='InvalidStateError')) {
+          try { await deleteDB(); const again = indexedDB.open(DB_NAME);
+            again.onupgradeneeded = ()=>{ const db=again.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
+            again.onsuccess = ()=> resolve(again.result);
+            again.onerror   = ()=> reject(again.error);
+          } catch(e){ reject(e); }
+        } else reject(req.error);
+      };
+    };
+    if (FORCE_DB_RESET) deleteDB().finally(doOpen); else doOpen();
+  });
+}
+
+function withDB(mode, fn){
+  return openDB().then(db => new Promise((res, rej)=>{
+    const tx = db.transaction(STORE, mode);
+    const s  = tx.objectStore(STORE);
+    Promise.resolve(fn(s)).then(val=>{
+      tx.oncomplete = ()=>{ db.close(); res(val); };
+      tx.onerror    = ()=>{ db.close(); rej(tx.error); };
+    }, err => { db.close(); rej(err); });
+  }));
+}
+
+const idb = {
+  get:(k)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
   set:(k,v)=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
   iterate:(cb)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))
 };
@@ -142,7 +181,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts}));
       }
     });
-    // ▼ Показваме по реда на писане (само по време)
+    // ▼ показваме в реда на писане
     items.sort((a,b)=> a.ts - b.ts);
 
     let total=0; rowsEl.innerHTML='';
@@ -157,7 +196,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  // --- препроцес за OCR (оставяме твоя бърз подход) ---
+  // --- препроцес за OCR (бърз, както го имаш) ---
   function prepForOCR(src){
     const dpr=window.devicePixelRatio||1, scale=3;
     const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
@@ -186,14 +225,14 @@ window.addEventListener('DOMContentLoaded',()=>{
     return out;
   }
 
-  // --- изпращане към OCR с таймаут и стабилен ред ---
+  // --- OCR с таймаут и стабилен ред ---
   async function sendToOCR(imgDataURL){
     try{
       step('OCR: изпращане…');
       const base64 = imgDataURL.split(',')[1];
 
       const ctl = new AbortController();
-      const timeout = setTimeout(()=>ctl.abort(), 12000); // 12s таймаут
+      const timeout = setTimeout(()=>ctl.abort(), 12000);
 
       const r = await fetch(OCR_URL, {
         method:'POST',
@@ -211,7 +250,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         const baseTs = Date.now();
         for (let i=0; i<j.entries.length; i++){
           const e = j.entries[i];
-          await saveEntry(e.name, e.amount, baseTs + i); // пазим реда от OCR-а
+          await saveEntry(e.name, e.amount, baseTs + i);
         }
         toast(`Записани редове: ${j.entries.length}`);
         if(panel.classList.contains('open')){ await refreshSuggestions(); renderSearch(q.value); }
@@ -230,21 +269,17 @@ window.addEventListener('DOMContentLoaded',()=>{
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
-      // 1) Снимка (сваляне на PNG)
       step('Запис: снимка…');
       const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // 2) OCR във фона
       const pre=prepForOCR(canvas);
       const dataURL=pre.toDataURL('image/png');
 
-      // 3) Нов лист веднага (можеш да продължиш да пишеш)
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      // 4) Пращаме към бекенда
       void sendToOCR(dataURL);
     }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
   };
