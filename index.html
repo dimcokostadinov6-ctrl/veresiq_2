@@ -69,10 +69,10 @@
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
 if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 
-/*** IndexedDB — стабилен open (+ опция за пълно нулиране) ***/
+/*** IndexedDB — стабилен open (+ опция за нулиране) ***/
 const DB_NAME = 'veresia-db';
 const STORE   = 'names';
-const FORCE_DB_RESET = false; // сложи true за пълно чистене при всеки лоуд (бета)
+const FORCE_DB_RESET = false;
 
 function deleteDB(){
   return new Promise((res,rej)=>{
@@ -119,10 +119,10 @@ const idb = {
   iterate:(cb)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))
 };
 
-/*** OCR Tuning + по-точен пре-процес и рязане по редове ***/
-const OCR_TUNING = { scale: 5, splitLines: true, maxLines: 20 };
+/*** OCR Tuning ***/
+const OCR_TUNING = { scale: 5, splitLines: true, maxLines: 50 };
 
-// Otsu + премахване на сини линии + инверсия + авто-кроп
+/*** Пре-процес (Otsu, пази десетични точки, автокроп) ***/
 function prepForOCR(src){
   const dpr = window.devicePixelRatio || 1;
   const scale = OCR_TUNING.scale;
@@ -134,7 +134,7 @@ function prepForOCR(src){
 
   let img = ctx.getImageData(0,0,w,h), d = img.data;
 
-  // Грейскейл + махни сините линии + инверсия (бялото мастило -> тъмно)
+  // грейскейл + махни сините линии + инверсия (бялото мастило -> тъмно)
   for (let i=0;i<d.length;i+=4){
     const r=d[i], g=d[i+1], b=d[i+2];
     const isBlue = (b > r + 10) && (b > g + 8);
@@ -144,7 +144,7 @@ function prepForOCR(src){
   }
   ctx.putImageData(img,0,0);
 
-  // Otsu праг
+  // Otsu
   const hist = new Uint32Array(256);
   for (let i=0;i<d.length;i+=4) hist[d[i]]++;
   let sum=0; for(let i=0;i<256;i++) sum += i*hist[i];
@@ -164,7 +164,7 @@ function prepForOCR(src){
   }
   ctx.putImageData(img,0,0);
 
-  // --- Despeckle, но пази десетичната точка ---
+  // Despeckle, но пази десетичните точки (има съсед по X на <=2px)
   function hasNeighborInRange(arr,w,h,x,y,rx,ry){
     for(let yy=-ry; yy<=ry; yy++){
       for(let xx=-rx; xx<=rx; xx++){
@@ -180,7 +180,6 @@ function prepForOCR(src){
     for (let x=1;x<w-1;x++){
       const i=(y*w+x)*4;
       if (d[i]===0){
-        // ако няма черни съседи в хоризонтал +/-2 и вертикал +/-1 → шум
         const nearInk = hasNeighborInRange(d,w,h,x,y,2,1);
         if (!nearInk){ d[i]=d[i+1]=d[i+2]=255; }
       }
@@ -207,8 +206,19 @@ function prepForOCR(src){
   return out;
 }
 
-// Рязане по хоризонтални сегменти (редове)
-function sliceLines(binaryCanvas){
+/*** Помощници за въртене и рязане по редове ***/
+function rotateCanvas(src, dir='cw'){
+  const c=document.createElement('canvas');
+  c.width=src.height; c.height=src.width;
+  const g=c.getContext('2d');
+  if (dir==='cw'){ g.translate(c.width,0); g.rotate(Math.PI/2); }
+  else { g.translate(0,c.height); g.rotate(-Math.PI/2); }
+  g.drawImage(src,0,0);
+  return c;
+}
+
+// хоризонтално рязане (редове)
+function sliceLinesH(binaryCanvas){
   const w=binaryCanvas.width, h=binaryCanvas.height;
   const ctx=binaryCanvas.getContext('2d');
   const img=ctx.getImageData(0,0,w,h), d=img.data;
@@ -219,7 +229,7 @@ function sliceLines(binaryCanvas){
     for (let x=0;x<w;x++){ if (d[(y*w+x)*4]===0) cnt++; }
     rows[y]=cnt;
   }
-  const thresh = Math.max(3, Math.floor(w*0.006));
+  const thresh = Math.max(2, Math.floor(w*0.004));
   const ranges=[]; let inSeg=false, start=0;
   for (let y=0;y<h;y++){
     if (rows[y]>thresh){ if(!inSeg){inSeg=true; start=y;} }
@@ -256,6 +266,21 @@ function sliceLines(binaryCanvas){
   return canvases;
 }
 
+// авто-детекция на ориентация: пробва хоризонтално и вертикално, взима това с повече редове
+function segmentLinesAuto(binaryCanvas){
+  const hParts = sliceLinesH(binaryCanvas);
+  const rot = rotateCanvas(binaryCanvas, 'cw');
+  const vPartsRot = sliceLinesH(rot); // линиите вече са хоризонтални след въртене
+
+  // избираме варианта с повече смислени сегменти
+  const pickVertical = vPartsRot.length > hParts.length;
+  if (!pickVertical) return hParts;
+
+  // ако сме избрали вертикалния вариант, връщаме сегментите (вече хор. ориентирани) директно
+  return vPartsRot;
+}
+
+/*** Викане на бекенда ***/
 async function callOCR(dataURL, signal){
   const r = await fetch(OCR_URL, {
     method:'POST',
@@ -269,7 +294,7 @@ async function callOCR(dataURL, signal){
   return Array.isArray(j.entries) ? j.entries : [];
 }
 
-/*** Претеглен Damerau–Levenshtein за „щракване“ на имена ***/
+/*** Фъзи „щракване“ на имена ***/
 function dlw(a,b){
   const al=a.toLowerCase(), bl=b.toLowerCase();
   const m=al.length,n=bl.length;
@@ -282,11 +307,10 @@ function dlw(a,b){
       const ai=al[i-1], bj=bl[j-1];
       const sub = (ai===bj) ? 0 : (near.has(`${ai}-${bj}`) ? 0.4 : 1);
       let val = Math.min(
-        dp[i-1][j] + 1,      // delete
-        dp[i][j-1] + 1,      // insert
-        dp[i-1][j-1] + sub   // substitute
+        dp[i-1][j] + 1,
+        dp[i][j-1] + 1,
+        dp[i-1][j-1] + sub
       );
-      // adjacent transposition
       if (i>1 && j>1 && al[i-1]===bl[j-2] && al[i-2]===bl[j-1]){
         val = Math.min(val, dp[i-2][j-2] + 0.4);
       }
@@ -304,11 +328,11 @@ async function normalizeName(raw){
     if (d<bestD){ best=name; bestD=d; }
   }
   const L=Math.max(raw.length, best.length);
-  const thr = L<=4 ? 1.2 : 2.4; // по-смел snap за кратки имена
+  const thr = L<=4 ? 1.2 : 2.4;
   return (bestD<=thr) ? best : raw;
 }
 
-/*** UI / Canvas + логика ***/
+/*** UI ***/
 window.addEventListener('DOMContentLoaded',()=>{
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
@@ -365,7 +389,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts}));
       }
     });
-    items.sort((a,b)=> a.ts - b.ts); // ред на писане
+    items.sort((a,b)=> a.ts - b.ts);
     let total=0; rowsEl.innerHTML='';
     items.forEach(x=>{
       total+=x.amount;
@@ -384,30 +408,22 @@ window.addEventListener('DOMContentLoaded',()=>{
       const ctl = new AbortController();
       const timeout = setTimeout(()=>ctl.abort(), 15000);
 
+      const parts = OCR_TUNING.splitLines
+        ? segmentLinesAuto(binaryCanvas).slice(0, OCR_TUNING.maxLines)
+        : [binaryCanvas];
+
       let total=0;
       const baseTs = Date.now();
 
-      if (OCR_TUNING.splitLines){
-        const parts = sliceLines(binaryCanvas).slice(0, OCR_TUNING.maxLines);
-        for (let i=0;i<parts.length;i++){
-          const dataURL = parts[i].toDataURL('image/png');
-          const entries = await callOCR(dataURL, ctl.signal);
-          for (let j=0;j<entries.length;j++){
-            const e = entries[j];
-            const fixedName = await normalizeName(e.name);
-            await saveEntry(fixedName, e.amount, baseTs + total + j);
-          }
-          total += entries.length;
-        }
-      } else {
-        const dataURL = binaryCanvas.toDataURL('image/png');
+      for (let i=0;i<parts.length;i++){
+        const dataURL = parts[i].toDataURL('image/png');
         const entries = await callOCR(dataURL, ctl.signal);
-        for (let i=0;i<entries.length;i++){
-          const e = entries[i];
+        for (let j=0;j<entries.length;j++){
+          const e = entries[j];
           const fixedName = await normalizeName(e.name);
-          await saveEntry(fixedName, e.amount, baseTs + i);
+          await saveEntry(fixedName, e.amount, baseTs + total + j);
         }
-        total = entries.length;
+        total += entries.length;
       }
 
       clearTimeout(timeout);
@@ -430,10 +446,9 @@ window.addEventListener('DOMContentLoaded',()=>{
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      const bin=prepForOCR(canvas);
-      const ctxBoard=canvas.getContext('2d'); ctxBoard.clearRect(0,0,canvas.width,canvas.height);
-
-      void sendToOCRFromCanvas(bin);
+      const bin=prepForOCR(canvas);                  // бинарализирано изображение
+      const ctxBoard=canvas.getContext('2d'); ctxBoard.clearRect(0,0,canvas.width,canvas.height); // нов лист
+      void sendToOCRFromCanvas(bin);                 // много имена от един лист
     }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
   };
 
