@@ -3,457 +3,464 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<title>Veresia</title>
+<title>Veresia – Hybrid OCR (Display & OCR layers)</title>
 <style>
-  :root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc}
-  html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
+  :root{--bg:#0c1530;--line:#1d2b5c;--ink:#f8fafc;--panel:#0b1220;--text:#e5e7eb;--border:#24314f}
+  html,body{margin:0;height:100%;background:#0b0f14;color:var(--text);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
   .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
-  .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
+  .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:var(--text);background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
   .sep{flex:1}
-  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr auto}
+  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr 360px}
   .board-wrap{position:relative;overflow:hidden}
-  canvas#board{
+  canvas#display{
     width:100%;height:100%;display:block;touch-action:none;
     background:
       repeating-linear-gradient(to bottom,
         var(--bg) 0px, var(--bg) 26px,
         var(--line) 26px, var(--line) 27px);
   }
-  .panel{width:min(360px,92vw);background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;display:none}
-  .panel.open{display:block}
-  .panel h3{margin:.2rem 0 .6rem;font-weight:600}
-  .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
-  .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
+  /* OCR канвасът е невидим */
+  canvas#ocr{position:absolute;inset:0;opacity:0;pointer-events:none}
+
+  aside.panel{background:var(--panel);border-left:1px solid #1f2a44;padding:.6rem .6rem 80px;overflow:auto}
+  .h2{margin:.2rem 0 .4rem;font-weight:600}
+  .row{display:flex;gap:.5rem;align-items:center;margin:.4rem 0}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
-  .list{font-size:.95rem;line-height:1.4}
-  .list div{display:flex;justify-content:space-between;gap:.75rem;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
+  .hint{opacity:.8;font-size:.85rem}
+  .queue{display:grid;gap:.5rem;margin-top:.5rem}
+  .card{border:1px solid var(--border);border-radius:.6rem;overflow:hidden;background:#0b0f14}
+  .card header{display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;border-bottom:1px solid #1c2744}
+  .thumb{display:block;max-width:100%;background:#fff}
+  .card .actions{display:flex;gap:.4rem;flex-wrap:wrap;padding:.4rem .5rem;border-top:1px dashed #1c2744}
+  .chip{border:1px solid #2b3b64;border-radius:999px;padding:.25rem .5rem;cursor:pointer;background:#0c1426}
+  .chip:hover{border-color:#4c68a8}
+  .ok{background:#12321b;border-color:#1f7a3d}
+  .danger{background:#321212;border-color:#7a1f1f}
+  .name{font-weight:600}
+  .small{font-size:.85rem;opacity:.9}
+  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;background:#111827;border:1px solid #374151;padding:.05rem .35rem;border-radius:.3rem;font-size:.8rem}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
-  #hint{font-size:.85rem;opacity:.9}
-  .pen-indicator{position:fixed;left:6px;top:52px;width:34px;height:34px;border-radius:50%;background:#0e1628;border:1px solid #203255;display:grid;place-items:center;z-index:6}
-  .pen-indicator:after{content:"✍️";font-size:18px}
 </style>
 </head>
 <body>
   <div class="topbar">
     <strong>Veresia</strong>
     <button id="btnSave" class="btn primary">Запази</button>
-    <div class="sep"></div>
-    <button id="btnSearch" class="btn">Търсене</button>
-    <span id="hint" title="Пише се само със стилус">✍️ Само писалка</span>
+    <button id="btnPreview" class="btn">OCR преглед</button>
+    <span class="sep"></span>
+    <span class="hint">Пишеш <b>бяло на син фон</b> • OCR вижда <b>черно върху бяло</b></span>
   </div>
-  <div class="pen-indicator" title="Само със стилус"></div>
 
   <div class="stage">
     <div class="board-wrap">
-      <canvas id="board"></canvas>
+      <canvas id="display"></canvas>
+      <canvas id="ocr"></canvas>
     </div>
-    <aside id="searchPanel" class="panel" aria-label="Търсене">
-      <h3>Търсене</h3>
-      <div class="field">
-        <input id="q" type="search" placeholder="Име…" list="suggestions"
-               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/>
-        <datalist id="suggestions"></datalist>
-        <span id="sum" class="pill">0.00 лв</span>
-      </div>
-      <div id="rows" class="list" aria-live="polite"></div>
+
+    <aside class="panel">
+      <div class="h2">Опашка „За преглед“</div>
+      <div class="hint">Бутоните <span class="kbd">1-5</span> избират предложение • <span class="kbd">Enter</span> приема</div>
+      <div id="queue" class="queue"></div>
     </aside>
   </div>
 
   <div id="toast" class="toast"></div>
 
-<script>
-/*** КОНФИГ ***/
-let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
-if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
+  <!-- Tesseract.js за локален OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script>
+  /************* КОНФИГ *************/
+  // Сложи тук твоя Cloud Run/Functions endpoint (с /ocr)
+  let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
+  const USE_CLOUD_FALLBACK = true;         // true = праща към Google при ниска увереност
+  const CLIENT_CONF_THRESHOLD = 0.85;      // под това → fallback към облак
+  const AUTO_ACCEPT_THRESHOLD = 0.92;      // общ скор (след фъзи) за авто-приемане
 
-/*** IndexedDB — стабилен open (+ опция за нулиране) ***/
-const DB_NAME = 'veresia-db';
-const STORE   = 'names';
-const FORCE_DB_RESET = false;
+  // Сложи тук най-честите ви клиенти (за тест добавих няколко)
+  const NAMES = [
+    "Личо","Лена г","бр ники","стоилка",
+    "кадето","мкр","снежа","вж","пиро",
+    "осман","гича","вероника","венци",
+    "вени","дедо г","кабаро"
+  ];
 
-function deleteDB(){
-  return new Promise((res,rej)=>{
-    const req = indexedDB.deleteDatabase(DB_NAME);
-    req.onsuccess = ()=>res();
-    req.onerror   = ()=>rej(req.error);
-    req.onblocked = ()=>rej(new Error('deleteDatabase blocked'));
-  });
-}
-function openDB(){
-  return new Promise((resolve, reject)=>{
-    const doOpen = ()=>{
-      const req = indexedDB.open(DB_NAME);
-      req.onupgradeneeded = ()=>{ const db=req.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
-      req.onsuccess = ()=> resolve(req.result);
-      req.onerror   = async()=>{
-        if (req.error && (req.error.name==='VersionError' || req.error.name==='InvalidStateError')) {
-          try {
-            await deleteDB();
-            const again = indexedDB.open(DB_NAME);
-            again.onupgradeneeded = ()=>{ const db=again.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
-            again.onsuccess = ()=> resolve(again.result);
-            again.onerror   = ()=> reject(again.error);
-          } catch(e){ reject(e); }
-        } else reject(req.error);
-      };
-    };
-    if (FORCE_DB_RESET) deleteDB().finally(doOpen); else doOpen();
-  });
-}
-function withDB(mode, fn){
-  return openDB().then(db => new Promise((res, rej)=>{
-    const tx = db.transaction(STORE, mode);
-    const s  = tx.objectStore(STORE);
-    Promise.resolve(fn(s)).then(val=>{
-      tx.oncomplete = ()=>{ db.close(); res(val); };
-      tx.onerror    = ()=>{ db.close(); rej(tx.error); };
-    }, err => { db.close(); rej(err); });
-  }));
-}
-const idb = {
-  get:(k)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
-  set:(k,v)=>withDB('readwrite',s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-  iterate:(cb)=>withDB('readonly',s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))
-};
+  /************* ПОЛЕЗНИ *************/
+  const toastEl = document.getElementById('toast');
+  function toast(msg, ms=2000){ toastEl.textContent=msg; toastEl.classList.add('show'); clearTimeout(toastEl._t); toastEl._t=setTimeout(()=>toastEl.classList.remove('show'), ms); }
+  function toDataURL(canvas){ return canvas.toDataURL('image/png'); }
 
-/*** OCR Tuning ***/
-const OCR_TUNING = { scale: 5, splitLines: true, maxLines: 50 };
+  /************* СЛОЕВЕ: Display & OCR *************/
+  const display = document.getElementById('display');
+  const ocr = document.getElementById('ocr');
+  const dCtx = display.getContext('2d', { willReadFrequently:true });
+  const oCtx = ocr.getContext('2d', { willReadFrequently:true });
 
-/*** Пре-процес (Otsu, пази десетични точки, автокроп) ***/
-function prepForOCR(src){
-  const dpr = window.devicePixelRatio || 1;
-  const scale = OCR_TUNING.scale;
-  const w = Math.floor(src.width / dpr * scale);
-  const h = Math.floor(src.height / dpr * scale);
-  const out = document.createElement('canvas'); out.width=w; out.height=h;
-  const ctx = out.getContext('2d', { willReadFrequently:true });
-  ctx.drawImage(src, 0, 0, w, h);
-
-  let img = ctx.getImageData(0,0,w,h), d = img.data;
-
-  // грейскейл + махни сините линии + инверсия (бялото мастило -> тъмно)
-  for (let i=0;i<d.length;i+=4){
-    const r=d[i], g=d[i+1], b=d[i+2];
-    const isBlue = (b > r + 10) && (b > g + 8);
-    if (isBlue){ d[i]=d[i+1]=d[i+2]=255; continue; }
-    let lum = (0.299*r + 0.587*g + 0.114*b);
-    lum = 255 - lum; d[i]=d[i+1]=d[i+2]=lum;
-  }
-  ctx.putImageData(img,0,0);
-
-  // Otsu
-  const hist = new Uint32Array(256);
-  for (let i=0;i<d.length;i+=4) hist[d[i]]++;
-  let sum=0; for(let i=0;i<256;i++) sum += i*hist[i];
-  const tot = (d.length/4)|0;
-  let sumB=0,wB=0,varMax=0,thr=127;
-  for (let i=0;i<256;i++){
-    wB += hist[i]; if(!wB) continue;
-    const wF = tot - wB; if(!wF) break;
-    sumB += i*hist[i];
-    const mB = sumB / wB, mF = (sum - sumB) / wF;
-    const between = wB*wF*(mB-mF)*(mB-mF);
-    if (between > varMax){ varMax=between; thr=i; }
-  }
-  for (let i=0;i<d.length;i+=4){
-    const v = d[i] < thr ? 0 : 255;
-    d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
-  }
-  ctx.putImageData(img,0,0);
-
-  // Despeckle, но пази десетичните точки (има съсед по X на <=2px)
-  function hasNeighborInRange(arr,w,h,x,y,rx,ry){
-    for(let yy=-ry; yy<=ry; yy++){
-      for(let xx=-rx; xx<=rx; xx++){
-        if(xx===0 && yy===0) continue;
-        const X=x+xx, Y=y+yy;
-        if(X<0||Y<0||X>=w||Y>=h) continue;
-        if (arr[(Y*w+X)*4]===0) return true;
-      }
-    }
-    return false;
-  }
-  for (let y=1;y<h-1;y++){
-    for (let x=1;x<w-1;x++){
-      const i=(y*w+x)*4;
-      if (d[i]===0){
-        const nearInk = hasNeighborInRange(d,w,h,x,y,2,1);
-        if (!nearInk){ d[i]=d[i+1]=d[i+2]=255; }
-      }
-    }
-  }
-  ctx.putImageData(img,0,0);
-
-  // авто-кроп до мастилото
-  let minX=w, minY=h, maxX=-1, maxY=-1;
-  for (let y=0;y<h;y++){
-    for (let x=0;x<w;x++){
-      if (d[(y*w+x)*4]===0){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; }
-    }
-  }
-  if (maxX>=0){
-    const pad=12;
-    const x0=Math.max(0,minX-pad), y0=Math.max(0,minY-pad);
-    const x1=Math.min(w-1,maxX+pad), y1=Math.min(h-1,maxY+pad);
-    const cw=x1-x0+1, ch=y1-y0+1;
-    const c=document.createElement('canvas'); c.width=cw; c.height=ch;
-    c.getContext('2d').drawImage(out, x0, y0, cw, ch, 0, 0, cw, ch);
-    return c;
-  }
-  return out;
-}
-
-/*** Помощници за въртене и рязане по редове ***/
-function rotateCanvas(src, dir='cw'){
-  const c=document.createElement('canvas');
-  c.width=src.height; c.height=src.width;
-  const g=c.getContext('2d');
-  if (dir==='cw'){ g.translate(c.width,0); g.rotate(Math.PI/2); }
-  else { g.translate(0,c.height); g.rotate(-Math.PI/2); }
-  g.drawImage(src,0,0);
-  return c;
-}
-
-// хоризонтално рязане (редове)
-function sliceLinesH(binaryCanvas){
-  const w=binaryCanvas.width, h=binaryCanvas.height;
-  const ctx=binaryCanvas.getContext('2d');
-  const img=ctx.getImageData(0,0,w,h), d=img.data;
-
-  const rows = new Uint32Array(h);
-  for (let y=0;y<h;y++){
-    let cnt=0;
-    for (let x=0;x<w;x++){ if (d[(y*w+x)*4]===0) cnt++; }
-    rows[y]=cnt;
-  }
-  const thresh = Math.max(2, Math.floor(w*0.004));
-  const ranges=[]; let inSeg=false, start=0;
-  for (let y=0;y<h;y++){
-    if (rows[y]>thresh){ if(!inSeg){inSeg=true; start=y;} }
-    else if(inSeg){ ranges.push([start,y]); inSeg=false; }
-  }
-  if(inSeg) ranges.push([start,h]);
-
-  const merged=[];
-  for(const [s,e] of ranges){
-    if(!merged.length) merged.push([s,e]);
-    else{
-      const last=merged[merged.length-1];
-      if (s - last[1] <= 6) last[1]=e; else merged.push([s,e]);
-    }
-  }
-
-  const canvases=[];
-  for(const [sy,ey] of merged){
-    const padY=6, y0=Math.max(0, sy-padY), y1=Math.min(h, ey+padY);
-    let minX=w, maxX=-1;
-    for(let x=0;x<w;x++){
-      let black=0;
-      for(let y=y0;y<y1;y++){ if (d[(y*w+x)*4]===0) black++; }
-      if (black>0){ if(x<minX)minX=x; if(x>maxX)maxX=x; }
-    }
-    if (maxX>=0){
-      const padX=10, x0=Math.max(0, minX-padX), x1=Math.min(w, maxX+padX);
-      const cw=x1-x0, ch=y1-y0;
-      const c=document.createElement('canvas'); c.width=cw; c.height=ch;
-      c.getContext('2d').drawImage(binaryCanvas, x0, y0, cw, ch, 0, 0, cw, ch);
-      canvases.push(c);
-    }
-  }
-  return canvases;
-}
-
-// авто-детекция на ориентация: пробва хоризонтално и вертикално, взима това с повече редове
-function segmentLinesAuto(binaryCanvas){
-  const hParts = sliceLinesH(binaryCanvas);
-  const rot = rotateCanvas(binaryCanvas, 'cw');
-  const vPartsRot = sliceLinesH(rot); // линиите вече са хоризонтални след въртене
-
-  // избираме варианта с повече смислени сегменти
-  const pickVertical = vPartsRot.length > hParts.length;
-  if (!pickVertical) return hParts;
-
-  // ако сме избрали вертикалния вариант, връщаме сегментите (вече хор. ориентирани) директно
-  return vPartsRot;
-}
-
-/*** Викане на бекенда ***/
-async function callOCR(dataURL, signal){
-  const r = await fetch(OCR_URL, {
-    method:'POST',
-    mode:'cors',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ imageBase64: dataURL.split(',')[1] }),
-    signal
-  });
-  const j = await r.json();
-  if(!r.ok || !j.ok) throw new Error(j?.error || ('HTTP '+r.status));
-  return Array.isArray(j.entries) ? j.entries : [];
-}
-
-/*** Фъзи „щракване“ на имена ***/
-function dlw(a,b){
-  const al=a.toLowerCase(), bl=b.toLowerCase();
-  const m=al.length,n=bl.length;
-  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
-  for(let i=0;i<=m;i++)dp[i][0]=i;
-  for(let j=0;j<=n;j++)dp[0][j]=j;
-  const near = new Set(['о-а','а-о','з-г','г-з','е-є','е-ё','и-й','у-ъ','к-х','л-и','д-л','с-о','в-у','п-р','м-н']);
-  for(let i=1;i<=m;i++){
-    for(let j=1;j<=n;j++){
-      const ai=al[i-1], bj=bl[j-1];
-      const sub = (ai===bj) ? 0 : (near.has(`${ai}-${bj}`) ? 0.4 : 1);
-      let val = Math.min(
-        dp[i-1][j] + 1,
-        dp[i][j-1] + 1,
-        dp[i-1][j-1] + sub
-      );
-      if (i>1 && j>1 && al[i-1]===bl[j-2] && al[i-2]===bl[j-1]){
-        val = Math.min(val, dp[i-2][j-2] + 0.4);
-      }
-      dp[i][j]=val;
-    }
-  }
-  return dp[m][n];
-}
-async function normalizeName(raw){
-  const pool=[]; await idb.iterate(v=>pool.push(v.name));
-  if (!pool.length) return raw;
-  let best=raw, bestD=1e9;
-  for(const name of pool){
-    const d=dlw(raw, name);
-    if (d<bestD){ best=name; bestD=d; }
-  }
-  const L=Math.max(raw.length, best.length);
-  const thr = L<=4 ? 1.2 : 2.4;
-  return (bestD<=thr) ? best : raw;
-}
-
-/*** UI ***/
-window.addEventListener('DOMContentLoaded',()=>{
-  const canvas=document.getElementById('board');
-  const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  let drawing=false,last=null;
-
-  function resize(){
-    const dpr=window.devicePixelRatio||1;
-    const r=canvas.getBoundingClientRect();
-    canvas.width=Math.floor(r.width*dpr);
-    canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.lineJoin='round';
-    ctx.lineCap='round';
-    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
-  }
-  window.addEventListener('resize',resize,{passive:true});
-  window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
-  resize();
-
-  const isPen=e=>e.pointerType==='pen';
-  const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
-  canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
-  canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
-  const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
-
-  const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
-  function toast(m,ms=2400){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
-  const step=t=>{hint.textContent=t};
-
-  async function saveEntry(name, amount, tsOverride){
-    const key=name.trim().toLowerCase();
-    const prev=await idb.get(key)||{name, total:0, items:[]};
-    prev.total=+(prev.total+amount).toFixed(2);
-    prev.items.push({amount, ts: tsOverride ?? Date.now()});
-    await idb.set(key,prev);
-  }
-  async function allEntries(){
-    const rows=[]; await idb.iterate(v=>rows.push(v));
-    rows.sort((a,b)=>a.name.localeCompare(b.name,'bg')); return rows;
-  }
-
-  const panel=document.getElementById('searchPanel');const btnSearch=document.getElementById('btnSearch');
-  const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
-
-  btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
-  async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
-
-  async function renderSearch(term){
-    const t=(term||'').trim().toLowerCase();
-    const rows=await allEntries();
-    const items=[];
-    rows.forEach(r=>{
-      if(!t || r.name.toLowerCase().includes(t)){
-        r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts}));
-      }
+  function resizeCanvases(){
+    const dpr = window.devicePixelRatio || 1;
+    const r = display.getBoundingClientRect();
+    [display, ocr].forEach(c=>{
+      c.width = Math.floor(r.width*dpr);
+      c.height = Math.floor(r.height*dpr);
+      c.style.width = r.width+'px';
+      c.style.height = r.height+'px';
     });
-    items.sort((a,b)=> a.ts - b.ts);
-    let total=0; rowsEl.innerHTML='';
-    items.forEach(x=>{
-      total+=x.amount;
-      const d=document.createElement('div');
-      const when=new Date(x.ts).toLocaleString('bg-BG',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
-      d.innerHTML=`<span>${x.name}</span><span>${x.amount.toFixed(2)} лв</span><small>${when}</small>`;
-      rowsEl.appendChild(d);
-    });
-    sumEl.textContent=`${total.toFixed(2)} лв`;
+    dCtx.setTransform(dpr,0,0,dpr,0,0);
+    oCtx.setTransform(dpr,0,0,dpr,0,0);
+    // Display: рисуваме на син фон с бяла писалка
+    dCtx.lineJoin='round'; dCtx.lineCap='round';
+    dCtx.strokeStyle='#ffffff'; dCtx.lineWidth=3;
+    // OCR: бял фон, черна писалка
+    oCtx.lineJoin='round'; oCtx.lineCap='round';
+    oCtx.strokeStyle='#000000'; oCtx.lineWidth=3;
+    oCtx.fillStyle='#ffffff'; oCtx.fillRect(0,0,ocr.width,ocr.height);
   }
-  q.addEventListener('input',()=>renderSearch(q.value));
+  window.addEventListener('resize', resizeCanvases, {passive:true});
+  window.addEventListener('orientationchange', ()=>setTimeout(resizeCanvases, 50), {passive:true});
+  resizeCanvases();
 
-  async function sendToOCRFromCanvas(binaryCanvas){
-    try{
-      step('OCR: изпращане…');
-      const ctl = new AbortController();
-      const timeout = setTimeout(()=>ctl.abort(), 15000);
+  // Рисуване: бяло на син (display) + едновременно черно на бяло (ocr)
+  let drawing=false, last=null;
+  const pos = (e, el) => {
+    const r = el.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top, p: e.pressure || 0.5 };
+  };
+  const isPen = e => e.pointerType==='pen' || e.pointerType==='touch' || e.pointerType==='mouse';
 
-      const parts = OCR_TUNING.splitLines
-        ? segmentLinesAuto(binaryCanvas).slice(0, OCR_TUNING.maxLines)
-        : [binaryCanvas];
+  display.addEventListener('pointerdown', e=>{
+    if(!isPen(e)) return;
+    e.preventDefault(); drawing=true; last=pos(e, display);
+  });
+  display.addEventListener('pointermove', e=>{
+    if(!drawing) return;
+    const p = pos(e, display);
+    const w = 2 + p.p*3.5;
+    dCtx.lineWidth=w; dCtx.beginPath(); dCtx.moveTo(last.x,last.y); dCtx.lineTo(p.x,p.y); dCtx.stroke();
+    oCtx.lineWidth=w; oCtx.beginPath(); oCtx.moveTo(last.x,last.y); oCtx.lineTo(p.x,p.y); oCtx.stroke();
+    last=p;
+  });
+  const stop=()=>{drawing=false; last=null};
+  display.addEventListener('pointerup', stop);
+  display.addEventListener('pointercancel', stop);
+  display.addEventListener('pointerleave', stop);
 
-      let total=0;
-      const baseTs = Date.now();
-
-      for (let i=0;i<parts.length;i++){
-        const dataURL = parts[i].toDataURL('image/png');
-        const entries = await callOCR(dataURL, ctl.signal);
-        for (let j=0;j<entries.length;j++){
-          const e = entries[j];
-          const fixedName = await normalizeName(e.name);
-          await saveEntry(fixedName, e.amount, baseTs + total + j);
-        }
-        total += entries.length;
-      }
-
-      clearTimeout(timeout);
-      toast(total ? `Записани редове: ${total}` : 'Не открих „Име - сума“');
-      if(panel.classList.contains('open')){ await refreshSuggestions(); renderSearch(q.value); }
-      step('Готово');
-    }catch(err){
-      console.error('[OCR] →', err);
-      toast(err.name==='AbortError' ? 'OCR таймаут' : 'OCR грешка (виж конзолата)');
-      step('Грешка');
-    }
-  }
-
-  const btnSave=document.getElementById('btnSave');
-  btnSave.onclick=async()=>{
-    try{
-      step('Запис: снимка…');
-      const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-      a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
-      document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
-
-      const bin=prepForOCR(canvas);                  // бинарализирано изображение
-      const ctxBoard=canvas.getContext('2d'); ctxBoard.clearRect(0,0,canvas.width,canvas.height); // нов лист
-      void sendToOCRFromCanvas(bin);                 // много имена от един лист
-    }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
+  /************* OCR ПРЕГЛЕД *************/
+  const btnPreview = document.getElementById('btnPreview');
+  btnPreview.onclick = ()=>{
+    const w = window.open('','_blank','width=900,height=700');
+    w.document.write(`<img src="${toDataURL(ocr)}" style="max-width:100%"/>`);
+    w.document.title = 'OCR Preview (черно на бяло)';
   };
 
-  (async()=>{await refreshSuggestions()})();
-});
-</script>
+  /************* СЕГМЕНТАЦИЯ НА БЛОКОВЕ *************/
+  // Адаптивен анализ на редове: намира „мастилени“ хоризонтални зони и ги групира
+  function segmentBlocks(canvas){
+    const ctx = canvas.getContext('2d', { willReadFrequently:true });
+    const {width:w, height:h} = canvas;
+    const img = ctx.getImageData(0,0,w,h);
+    const d = img.data;
+
+    // 1) Вертикална проекция (по редове): колко „черно“ има на y
+    const rowSum = new Float32Array(h);
+    for(let y=0;y<h;y++){
+      let s=0;
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;
+        // пикселът е черен ако R,G,B са ниски → ползваме инверсия на яркостта
+        const v = 255 - (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114);
+        s += v;
+      }
+      rowSum[y]=s/(w*255); // нормализирано
+    }
+
+    // 2) Адаптивен праг: медиана + динамика
+    const sorted = Array.from(rowSum).sort((a,b)=>a-b);
+    const med = sorted[Math.floor(h*0.5)] || 0;
+    const thr = Math.max(0.02, med*0.7); // пести шум, но хваща тънко писане
+
+    // 3) Намираме „мастилени“ ленти (y1..y2)
+    const bands=[];
+    let inBand=false, y1=0;
+    for(let y=0;y<h;y++){
+      const ink = rowSum[y] > thr;
+      if(ink && !inBand){ inBand=true; y1=y; }
+      else if(!ink && inBand){ inBand=false; bands.push([y1,y-1]); }
+    }
+    if(inBand) bands.push([y1,h-1]);
+
+    if(!bands.length) return [];
+
+    // 4) Групиране на близки ленти в блокове (за 1–3 реда)
+    const gaps = bands.map((b,i)=> i? (b[0]-bands[i-1][1]) : 0).slice(1);
+    const medianGap = gaps.length ? gaps.sort((a,b)=>a-b)[Math.floor(gaps.length*0.5)] : 0;
+    const maxJoinGap = Math.max(3, Math.floor(medianGap*1.2) || 12);
+
+    const blocks = [];
+    let cur = bands[0].slice();
+    for(let i=1;i<bands.length;i++){
+      const b = bands[i];
+      if(b[0]-cur[1] <= maxJoinGap && (b[1]-cur[0]) <= 3*27*2){ // груба граница ≤ ~3 реда
+        cur[1] = b[1];
+      }else{
+        blocks.push(cur); cur = b.slice();
+      }
+    }
+    blocks.push(cur);
+
+    // 5) Широчина по X за всеки блок (хоризонтална проекция в рамките на блока)
+    const out=[];
+    for(const [yy1,yy2] of blocks){
+      let minX=w, maxX=0;
+      for(let y=yy1;y<=yy2;y++){
+        for(let x=0;x<w;x++){
+          const i=(y*w+x)*4;
+          const v = 255 - (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114);
+          if(v>40){ // мастило
+            if(x<minX) minX=x;
+            if(x>maxX) maxX=x;
+          }
+        }
+      }
+      if(maxX-minX<10) continue; // твърде тънко
+      // добавяме малък падинг
+      const pad=8;
+      out.push({x:Math.max(0,minX-pad), y:Math.max(0,yy1-pad), w:Math.min(w, (maxX-minX)+2*pad), h:Math.min(h, (yy2-yy1)+2*pad)});
+    }
+    return out;
+  }
+
+  /************* OCR (локално + fallback към облак) *************/
+  async function ocrLocal(canvas){
+    // Tesseract.js с български
+    const worker = await Tesseract.createWorker('bul', 1, { logger: ()=>{} });
+    const { data } = await worker.recognize(canvas);
+    await worker.terminate();
+    // Оценка на увереност (средно от думите, ако има)
+    let conf = 0;
+    if(data?.words?.length){
+      conf = data.words.reduce((a,w)=>a+(w.confidence||0),0)/ (100*data.words.length);
+    }else if(typeof data?.confidence==='number'){
+      conf = (data.confidence||0)/100;
+    }
+    return { text: (data?.text||'').trim(), conf: Math.max(0, Math.min(1, conf||0)) };
+  }
+
+  async function ocrCloudFromDataURL(dataURL){
+    const base64 = dataURL.split(',')[1];
+    const r = await fetch(OCR_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ imageBase64: base64 })
+    });
+    const j = await r.json();
+    if(!r.ok || !j?.ok){
+      throw new Error(j?.error || ('HTTP '+r.status));
+    }
+    return { text: (j.text||'').trim(), conf: 0.9, entries: j.entries||[] };
+  }
+
+  /************* ПАРСЕР „Име – сума“ *************/
+  function parseEntries(text){
+    const results = [];
+    if(!text) return results;
+    const norm = text
+      .replace(/\u00A0/g,' ')
+      .replace(/[–—−]/g,'-')
+      .replace(/[,]/g, m=>','); // запетайката остава, по-късно я нормализираме
+
+    // Стратегия:
+    // 1) Ако има число на реда/в края на блока → търсим текст преди него за име.
+    // 2) Приемаме (име)(разделител по избор)(сума), разделител може и да липсва.
+    const lines = norm.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+
+    // Събираме в един буфер, защото често има пренос на ред
+    const joined = lines.join(' ').replace(/\s+/g,' ');
+
+    // Всички числа пари (1–4 цифри, по избор десетична част)
+    const moneyRx = /([0-9]{1,4})(?:[.,]([0-9]{1,2}))?\s*(?:лв|лева)?/gi;
+    let m, marks=[];
+    while((m = moneyRx.exec(joined))!==null){
+      const val = parseFloat(m[1] + '.' + (m[2]||'00'));
+      marks.push({start:m.index, end: moneyRx.lastIndex, amount: +val.toFixed(2)});
+    }
+    if(!marks.length) return results;
+
+    // За всеки маркер назад търсим име (кирилица, интервали, апостроф/тире/точка)
+    for(const mk of marks){
+      const left = joined.slice(0, mk.start).trim();
+      // взимаме последните до 50 символа като кандидат за име
+      let frag = left.slice(-50).replace(/[-=:]*\s*$/,'').trim();
+      // чистим некирилица (оставяме интервали и базова пунктуация за имена)
+      frag = frag.replace(/[^\p{Script=Cyrillic}\s.'’-]/gu,' ').replace(/\s+/g,' ').trim();
+      if(!frag) continue;
+      results.push({ name: frag, amount: mk.amount });
+    }
+    return results;
+  }
+
+  /************* ФЪЗИ-МАЧ (претеглен) *************/
+  const CONF = new Map(Object.entries({
+    "О:0":0.2,"0:О":0.2,"В:8":0.2,"8:В":0.2,"З:3":0.2,"3:З":0.2,"С:5":0.25,"5:С":0.25,
+    "Т:7":0.25,"7:Т":0.25,"І:1":0.25,"1:І":0.25,"І:Л":0.3,"Л:І":0.3,"Н:И":0.35,"И:Н":0.35,
+    "Й:И":0.2,"Ъ:У":0.45,"Ь:Ъ":0.45
+  }));
+  const normName = s => (s||'').toUpperCase().replace(/\s+/g,' ').replace(/[’']/g,'’').trim();
+  function wCost(a,b){
+    if(a===b) return 0;
+    if(!a || !b) return 1; // инс/дел
+    const k = `${a}:${b}`; return CONF.get(k) ?? 1;
+  }
+  function wLev(a,b){
+    a = normName(a); b = normName(b);
+    const n=a.length, m=b.length;
+    if(n===0 && m===0) return 0;
+    const dp = Array.from({length:n+1},()=>Array(m+1).fill(0));
+    for(let i=1;i<=n;i++) dp[i][0]=dp[i-1][0]+wCost(a[i-1],'');
+    for(let j=1;j<=m;j++) dp[0][j]=dp[0][j-1]+wCost('',b[j-1]);
+    for(let i=1;i<=n;i++) for(let j=1;j<=m;j++){
+      const sub=dp[i-1][j-1]+wCost(a[i-1],b[j-1]);
+      const del=dp[i-1][j]+wCost(a[i-1],'');
+      const ins=dp[i][j-1]+wCost('',b[j-1]);
+      dp[i][j]=Math.min(sub,del,ins);
+    }
+    const maxLen = Math.max(n,m)||1;
+    return dp[n][m]/maxLen; // по-ниско е по-добре
+  }
+  function bestCandidates(hint, k=5){
+    const scored = NAMES.map(n=>({name:n, score:wLev(hint, n)})).sort((a,b)=>a.score-b.score);
+    return scored.slice(0,k);
+  }
+
+  /************* ОПАШКА ЗА ПРЕГЛЕД *************/
+  const queueEl = document.getElementById('queue');
+  function queueCard({imgSrc, rawText, entries, candidates}){
+    const div = document.createElement('div'); div.className='card';
+    const head = document.createElement('header');
+    head.innerHTML = `<div class="small">OCR: <span>${(rawText||'').slice(0,80).replace(/</g,'&lt;')}...</span></div>`;
+    const thumb = document.createElement('img'); thumb.className='thumb'; thumb.src = imgSrc;
+    const acts = document.createElement('div'); acts.className='actions';
+
+    // Ако имаме парснати записи – показваме първия и предложения
+    let chosen = null;
+    const first = entries && entries[0] ? entries[0] : null;
+
+    const nameSpan = document.createElement('span'); nameSpan.className='name';
+    nameSpan.textContent = first ? first.name : '—';
+    const amtSpan = document.createElement('span'); amtSpan.className='pill';
+    amtSpan.textContent = first ? `${first.amount.toFixed(2)} лв` : '—';
+    head.prepend(amtSpan); head.prepend(nameSpan);
+
+    // Предложения 1..5
+    (candidates||[]).forEach((c,i)=>{
+      const chip = document.createElement('button');
+      chip.className='chip';
+      chip.textContent = `${i+1}. ${c.name}`;
+      chip.onclick = ()=>{ nameSpan.textContent=c.name; chosen={name:c.name, amount:first?first.amount:0}; };
+      acts.appendChild(chip);
+    });
+
+    // Приеми
+    const accept = document.createElement('button');
+    accept.className='chip ok'; accept.textContent='Приеми';
+    accept.onclick = ()=>{
+      if(!first && !chosen){ toast('Няма валиден запис'); return; }
+      const final = { name: chosen?.name || first.name, amount: (first?first.amount:0) };
+      // TODO: тук го запиши в твоя IndexedDB/бекенд – оставяме място
+      div.remove(); toast(`Записано: ${final.name} – ${final.amount.toFixed(2)} лв`);
+    };
+    acts.appendChild(accept);
+
+    // Пропусни
+    const skip = document.createElement('button');
+    skip.className='chip danger'; skip.textContent='Пропусни';
+    skip.onclick = ()=>div.remove();
+    acts.appendChild(skip);
+
+    div.appendChild(head);
+    div.appendChild(thumb);
+    div.appendChild(acts);
+    queueEl.appendChild(div);
+  }
+
+  /************* ОСНОВЕН ПОТОК „Запази“ *************/
+  const btnSave = document.getElementById('btnSave');
+  btnSave.onclick = async ()=>{
+    try{
+      // 1) Сегментираме блокове върху OCR канваса (черно-на-бяло)
+      const blocks = segmentBlocks(ocr);
+      if(!blocks.length){ toast('Няма мастило за OCR'); return; }
+
+      // 2) За всеки блок → OCR локално; ако conf < праг и е активиран fallback → облак
+      for(const b of blocks){
+        // изрязване
+        const tmp = document.createElement('canvas');
+        tmp.width=b.w; tmp.height=b.h;
+        const tctx = tmp.getContext('2d'); tctx.fillStyle='#fff'; tctx.fillRect(0,0,b.w,b.h);
+        tctx.drawImage(ocr, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+
+        // локален OCR
+        const local = await ocrLocal(tmp);
+        let text = local.text, conf = local.conf, cloudEntries=null;
+
+        if(USE_CLOUD_FALLBACK && conf < CLIENT_CONF_THRESHOLD && OCR_URL){
+          try{
+            const cloud = await ocrCloudFromDataURL(tmp.toDataURL('image/png'));
+            // избираме по-доброто (или комбинираме)
+            if((cloud.text||'').length > (text||'').length) { text = cloud.text; conf = cloud.conf; }
+            cloudEntries = cloud.entries;
+          }catch(e){ /* ако облакът счупи – игнорирай */ }
+        }
+
+        // 3) Парсваме „име – сума“
+        let entries = cloudEntries && cloudEntries.length ? cloudEntries : parseEntries(text);
+
+        // 4) Ако имаме име – фъзи предложения
+        let candidates=[];
+        if(entries && entries[0] && entries[0].name){
+          candidates = bestCandidates(entries[0].name, 5);
+        }
+
+        // 5) Авто-приемане ако скорът е висок (прибл. от фъзи)
+        let auto=false;
+        if(candidates[0]){
+          const fuzzyScore = 1 - candidates[0].score; // 0..1 (по-високо е по-добре)
+          const finalScore = 0.7*(conf||0) + 0.3*(fuzzyScore||0);
+          if(finalScore >= AUTO_ACCEPT_THRESHOLD && entries[0]){
+            // Тук можеш директно да записваш в твоята БД
+            // (за демо – пращаме в опашката като „прието“)
+            queueCard({
+              imgSrc: tmp.toDataURL('image/png'),
+              rawText: text,
+              entries: entries,
+              candidates: [candidates[0]] // показваме победителя само информативно
+            });
+            auto=true;
+          }
+        }
+
+        if(!auto){
+          // Показваме за преглед с топ-5
+          queueCard({
+            imgSrc: tmp.toDataURL('image/png'),
+            rawText: text,
+            entries: entries,
+            candidates: candidates
+          });
+        }
+      }
+
+      toast('Готово: блоковете са в опашката за преглед');
+      // 6) Изчистваме страницата за нов лист (по твое желание)
+      dCtx.clearRect(0,0,display.width,display.height);
+      oCtx.fillStyle='#ffffff'; oCtx.fillRect(0,0,ocr.width,ocr.height);
+
+    }catch(err){
+      console.error(err);
+      toast('Грешка при „Запази“ (виж конзолата)');
+    }
+  };
+  </script>
 </body>
 </html>
