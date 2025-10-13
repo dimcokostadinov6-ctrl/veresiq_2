@@ -7,8 +7,7 @@
 <style>
   :root{--bg:#0c1530;--line:#1d2b5c;--panel:#0b1220;--text:#e5e7eb;--border:#24314f}
   html,body{margin:0;height:100%;background:#0b0f14;color:var(--text);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.55rem .8rem;
-    background:rgba(11,15,20,.75);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06);z-index:10}
+  .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.55rem .8rem;background:rgba(11,15,20,.75);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06);z-index:10}
   .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:var(--text);background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer;touch-action:manipulation}
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
@@ -25,7 +24,7 @@
   .hint{opacity:.85;font-size:.85rem}
   .queue{display:grid;gap:.6rem;margin-top:.6rem}
   .card{border:1px solid var(--border);border-radius:.6rem;overflow:hidden;background:#0b0f14}
-  .card header{display:flex;align-items:center;gap:.5rem;padding:.42rem .55rem;border-bottom:1px solid #1c2744}
+  .card header{display:flex;align-items:center;gap:.5rem;padding:.42rem .55рем;border-bottom:1px solid #1c2744}
   .thumb{display:block;max-width:100%;background:#fff}
   .row{display:flex;gap:.4rem;align-items:center;padding:.45rem .55rem}
   .row input{flex:1;padding:.45rem .55rem;border-radius:.45rem;background:#0c1426;color:var(--text);border:1px solid #24314f}
@@ -34,14 +33,13 @@
   .chip:hover{border-color:#4c68a8}
   .ok{background:#12321b;border-color:#1f7a3d}
   .danger{background:#321212;border-color:#7a1f1f}
-  .name{font-weight:700}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
-  .small{font-size:.85рем;opacity:.9;margin-left:auto}
+  .small{font-size:.85rem;opacity:.9;margin-left:auto}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:11;display:none;pointer-events:none}
   .toast.show{display:block}
   .searchbox{display:flex;gap:.4rem;margin-top:.5rem}
   .searchbox input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:var(--text);border:1px solid #24314f}
-  .res{display:grid;gap:.2рем;margin-top:.4rem}
+  .res{display:grid;gap:.2rem;margin-top:.4rem}
   .res div{display:flex;justify-content:space-between;gap:.75rem;padding:.3rem .2rem;border-bottom:1px dashed #1c2744}
 </style>
 </head>
@@ -52,7 +50,7 @@
     <button id="btnPreview" class="btn">OCR преглед</button>
     <button id="btnSearch" class="btn">Търсене</button>
     <span class="sep"></span>
-    <span class="hint">Стилус-only • Handwrite→Print • Dual OCR</span>
+    <span class="hint">Stylus-only • Handwrite→Print • Dual OCR</span>
   </div>
 
   <div class="stage">
@@ -80,15 +78,14 @@
   <!-- Локален OCR -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
-  /************* КОНФИГ *************/
-  // ❗ Сложи Cloud Run/Functions адрес; ако няма /ocr, ще го добавим
-  let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
+  /*** КОНФИГ ***/
+  let OCR_URL = "https://ocr-980985905017.europe-west1.run.app"; // <— СМЕНИ С ТВОЯ
   if(!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
   const USE_CLOUD_FALLBACK = true;
-  const CLIENT_CONF_THRESHOLD = 0.86;   // по-висок праг – пращаме повече към облака
-  const AUTO_ACCEPT_THRESHOLD = 0.93;   // авто-приемане само при много висока увереност
+  const CLIENT_CONF_THRESHOLD = 0.86;
+  const AUTO_ACCEPT_THRESHOLD = 0.93;
 
-  /************* IndexedDB *************/
+  /*** IndexedDB ***/
   const DB_NAME='veresia-db', STORE='entries', DB_VER=1;
   function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
     r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE,{keyPath:'id'})};
@@ -100,12 +97,12 @@
     all: ()=>withDB('readonly',s=>new Promise((res,rej)=>{const out=[];const c=s.openCursor();c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue()}else res(out)};c.onerror=()=>rej(c.error)}))
   };
 
-  /************* UI helpers *************/
+  /*** UI ***/
   const toastEl=document.getElementById('toast');
   function toast(m,ms=2100){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
   const queueEl=document.getElementById('queue'); const qEl=document.getElementById('q'); const rowsEl=document.getElementById('rows'); const sumEl=document.getElementById('sum');
 
-  /************* Канваси *************/
+  /*** Канваси ***/
   const display=document.getElementById('display');
   const ocr=document.getElementById('ocr');
   const dCtx=display.getContext('2d',{willReadFrequently:true});
@@ -116,9 +113,7 @@
     const r=display.getBoundingClientRect();
     [display,ocr].forEach(c=>{c.width=Math.floor(r.width*dpr);c.height=Math.floor(r.height*dpr);c.style.width=r.width+'px';c.style.height=r.height+'px';});
     dCtx.setTransform(dpr,0,0,dpr,0,0); oCtx.setTransform(dpr,0,0,dpr,0,0);
-    // видим слой
     dCtx.lineJoin='round'; dCtx.lineCap='round'; dCtx.strokeStyle='#ffffff'; dCtx.lineWidth=3.5;
-    // OCR слой (бяло/черно)
     oCtx.fillStyle='#ffffff'; oCtx.fillRect(0,0,ocr.width,ocr.height);
     oCtx.lineJoin='round'; oCtx.lineCap='round'; oCtx.strokeStyle='#000000'; oCtx.lineWidth=4.8;
   }
@@ -126,7 +121,7 @@
   window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
   document.addEventListener('DOMContentLoaded',resize);
 
-  // Стилус-only (но допуска „touch-стилуси“ по pressure/tilt)
+  // Stylus-only (допуска „touch стилус“ по pressure/tilt)
   function isStylus(e){
     if(e.pointerType==='pen') return true;
     if(e.pointerType==='touch' && (e.pressure>0.1 || Math.abs(e.tiltX||0)+Math.abs(e.tiltY||0)>0)) return true;
@@ -138,64 +133,39 @@
   display.addEventListener('pointerdown',e=>{
     if(!isStylus(e)){ toast('Само със стилус ✍️'); return; }
     e.preventDefault(); display.setPointerCapture(e.pointerId);
-    drawing=true; last=pos(e,display);
-    dirty={x:last.x,y:last.y,x2:last.x,y2:last.y};
+    drawing=true; last=pos(e,display); dirty={x:last.x,y:last.y,x2:last.x,y2:last.y};
   }, {passive:false});
 
   display.addEventListener('pointermove',e=>{
     if(!drawing || !isStylus(e)) return;
     e.preventDefault();
     const p=pos(e,display); const w=2.5+p.p*3.8;
-    // рисуване на двата слоя
     dCtx.lineWidth=w; dCtx.beginPath(); dCtx.moveTo(last.x,last.y); dCtx.lineTo(p.x,p.y); dCtx.stroke();
     oCtx.lineWidth=Math.max(4.2,w*1.2); oCtx.beginPath(); oCtx.moveTo(last.x,last.y); oCtx.lineTo(p.x,p.y); oCtx.stroke();
-    // маркраме мръсния участък за последващо „препечатване“
     dirty.x=Math.min(dirty.x,p.x); dirty.y=Math.min(dirty.y,p.y); dirty.x2=Math.max(dirty.x2,p.x); dirty.y2=Math.max(dirty.y2,p.y);
     last=p;
   }, {passive:false});
 
   function handwriteToPrintRegion(x,y,w,h){
-    // „Препечатване“ (handwrite→print) в дадения регион от OCR слоя:
-    // 1) контраст (локално) → 2) двупрагово адаптивно → 3) затваряне/отваряне → 4) изтъняване леко
     const ctx=oCtx, img=ctx.getImageData(x,y,w,h), d=img.data;
-    // 1) предварително – лек контраст и денойз
+    // локален контраст
     for(let i=0;i<d.length;i+=4){
       const Y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-      // LUT: усилваме тъмното, изчистваме светлото
       let v = Y<140 ? 0 : (Y>210 ? 255 : (Y-140)*255/70);
       d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
     }
-    // 2) локална адаптивна бинаризация (проста 3x3 средна)
+    // адаптивна бинаризация 3x3
     const a=new Uint8ClampedArray(d); const idx=(xx,yy)=>((yy*w+xx)<<2);
     for(let yy=1;yy<h-1;yy++){
       for(let xx=1;xx<w-1;xx++){
-        let s=0,c=0;
-        for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ s+=a[idx(xx+dx,yy+dy)]; c++; }
+        let s=0,c=0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ s+=a[idx(xx+dx,yy+dy)]; c++; }
         const mean=s/c; const i=idx(xx,yy);
-        const v=a[i] < (mean-12) ? 0 : 255; // по-агресивно
+        const v=a[i] < (mean-12) ? 0 : 255;
         d[i]=d[i+1]=d[i+2]=v;
       }
     }
-    // 3) морфологично „затваряне“ + „отваряне“ (еднопикселни)
-    // затваряне – попълва дупки
-    const b=new Uint8ClampedArray(d);
-    for(let yy=1;yy<h-1;yy++)for(let xx=1;xx<w-1;xx++){
-      const i=idx(xx,yy);
-      let hasBlack=false;
-      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(b[idx(xx+dx,yy+dy)]<128){hasBlack=true;break} if(hasBlack)break }
-      d[i]=hasBlack?0:d[i]; d[i+1]=hasBlack?0:d[i+1]; d[i+2]=hasBlack?0:d[i+2];
-    }
-    // отваряне – събира дребни шумове
-    const cpy=new Uint8ClampedArray(d);
-    for(let yy=1;yy<h-1;yy++)for(let xx=1;xx<w-1;xx++){
-      const i=idx(xx,yy);
-      let allBlack=true;
-      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(cpy[idx(xx+dx,yy+dy)]>127){allBlack=false;break} if(!allBlack)break }
-      if(!allBlack){ /* оставяме */ } else { d[i]=d[i+1]=d[i+2]=0; }
-    }
     ctx.putImageData(img,x,y);
   }
-
   function beautifyDirty(){
     if(!dirty) return;
     const pad=10;
@@ -222,17 +192,17 @@
     const items=(await db.all()).filter(x=>!term || x.name.toLowerCase().includes(term.toLowerCase()));
     items.sort((a,b)=>a.name.localeCompare(b.name,'bg') || a.ts-b.ts);
     rowsEl.innerHTML=''; let total=0;
-    for(const it of items){ total+=it.amount; const div=document.createElement('div'); div.innerHTML=`<span class="name">${it.name}</span><span>${it.amount.toFixed(2)} лв</span>`; rowsEl.appendChild(div); }
+    for(const it of items){ total+=it.amount; const div=document.createElement('div'); div.innerHTML=`<span>${it.name}</span><span>${it.amount.toFixed(2)} лв</span>`; rowsEl.appendChild(div); }
     sumEl.textContent=total.toFixed(2)+' лв';
   }
 
-  /************* Сегментация (адаптивни блокове 1–3(+) реда) *************/
+  /*** Сегментация ***/
   function segmentBlocks(canvas){
     const ctx=canvas.getContext('2d',{willReadFrequently:true});
     const {width:w,height:h}=canvas; const img=ctx.getImageData(0,0,w,h); const d=img.data;
     const rowSum=new Float32Array(h);
     for(let y=0;y<h;y++){ let s=0; for(let x=0;x<w;x++){const i=(y*w+x)*4; const v=255-(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]); s+=v;} rowSum[y]=s/(w*255); }
-    const sorted=Array.from(rowSum).sort((a,b)=>a-b); const med=sorted[Math.floor(h*0.5)]||0; const thr=Math.max(0.02, med*0.65); // по-чувствителен
+    const sorted=Array.from(rowSum).sort((a,b)=>a-b); const med=sorted[Math.floor(h*0.5)]||0; const thr=Math.max(0.02, med*0.65);
     const bands=[]; let inBand=false,y1=0;
     for(let y=0;y<h;y++){ const ink=rowSum[y]>thr; if(ink && !inBand){inBand=true;y1=y}else if(!ink && inBand){inBand=false;bands.push([y1,y-1])}}
     if(inBand) bands.push([y1,h-1]); if(!bands.length) return [];
@@ -248,7 +218,7 @@
     return out;
   }
 
-  /************* Dual OCR *************/
+  /*** Dual OCR ***/
   let tesseractWorker=null;
   async function getWorker(){ if(!tesseractWorker){ tesseractWorker=await Tesseract.createWorker('bul',1,{logger:()=>{}});} return tesseractWorker; }
   window.addEventListener('beforeunload',()=>{ if(tesseractWorker) tesseractWorker.terminate(); });
@@ -261,19 +231,16 @@
     return c;
   }
   function handwriteToPrintCanvas(src){
-    // цялостно „препечатване“ на кропа преди OCR
-    const c=scaleForOCR(src); // мащабираме за детайл
+    const c=scaleForOCR(src);
     const ctx=c.getContext('2d',{willReadFrequently:true});
     const {width:w,height:h}=c; const img=ctx.getImageData(0,0,w,h), d=img.data;
-    // агресивен контраст + двупрагова бинаризация
     for(let i=0;i<d.length;i+=4){ const Y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; let v= (Y<150?0:(Y>210?255: (Y-150)*255/60)); d[i]=d[i+1]=d[i+2]=v; d[i+3]=255; }
     const a=new Uint8ClampedArray(d); const idx=(xx,yy)=>((yy*w+xx)<<2);
     for(let yy=1;yy<h-1;yy++)for(let xx=1;xx<w-1;xx++){
       let s=0,cnt=0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ s+=a[idx(xx+dx,yy+dy)]; cnt++; }
       const mean=s/cnt; const i=idx(xx,yy); const v=a[i]<(mean-10)?0:255; d[i]=d[i+1]=d[i+2]=v;
     }
-    ctx.putImageData(img,0,0);
-    return c;
+    ctx.putImageData(img,0,0); return c;
   }
 
   async function ocrLocalPrinted(canvas){
@@ -290,31 +257,27 @@
     return { text:(j.text||'').trim(), conf:0.9, entries:j.entries||[] };
   }
 
-  /************* Парсинг „име – сума“ (без лексикон) *************/
+  /*** Парсинг „име – сума“ ***/
   function parseEntries(text){
     const results=[]; if(!text) return results;
     const norm=text.replace(/\u00A0/g,' ').replace(/[–—−]/g,'-');
-    // 1) опитай на редове (събиране на 1–3 реда е вече взето в кропа)
     const joined=norm.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ');
-    // 2) открий сума (най-дясната/последна)
     const moneyRx=/([0-9]{1,4})(?:[.,]([0-9]{1,2}))?\s*(?:лв|лева)?/gi;
     let m, last=null;
     while((m=moneyRx.exec(joined))!==null){ const val=parseFloat(m[1]+'.'+(m[2]||'00')); last={start:m.index,end:moneyRx.lastIndex,amount:+val.toFixed(2)}; }
     if(!last) return results;
-    // 3) вземи текста преди сумата като „име“
     let frag=joined.slice(0,last.start).replace(/[-=:]*\s*$/,'').trim();
-    // почисти от не-кирилица, запази отделящите
     frag=frag.replace(/[^\p{Script=Cyrillic}\s.'’-]/gu,' ').replace(/\s+/g,' ').trim();
     if(frag) results.push({name:frag,amount:last.amount});
     return results;
   }
 
-  /************* Анти-дубликати *************/
+  /*** Анти-дубликати ***/
   const recentSet=new Set();
   async function sha(text){ const buf=new TextEncoder().encode(text); const dig=await crypto.subtle.digest('SHA-256',buf); return Array.from(new Uint8Array(dig)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
 
-  /************* Картичка с редакция *************/
-  function queueCard({imgSrc, rawText, entry, conf}){
+  /*** Картичка ***/
+  function queueCard({imgSrc, entry, conf}){
     const div=document.createElement('div'); div.className='card';
     const head=document.createElement('header');
     const info=document.createElement('span'); info.className='small'; info.textContent=`OCR conf: ${(conf*100|0)}%`;
@@ -344,31 +307,26 @@
     queueEl.appendChild(div);
   }
 
-  /************* Основен OCR поток *************/
+  /*** Основен OCR поток ***/
   async function processBlock(tmpCanvas){
-    // 1) локално (след „препечатване“)
     const local=await ocrLocalPrinted(tmpCanvas);
     let text=local.text, conf=local.conf, cloudEntries=null;
 
-    // 2) към облака (винаги ако слаб conf)
     if(USE_CLOUD_FALLBACK && conf<CLIENT_CONF_THRESHOLD && OCR_URL){
       try{
         const cloud=await ocrCloudFromDataURL(tmpCanvas.toDataURL('image/png'));
-        // Комбинираме: ако облакът е по-дълъг/по-смислен → взимаме него
         if((cloud.text||'').length>(text||'').length){ text=cloud.text; conf=cloud.conf; }
         cloudEntries=cloud.entries;
       }catch(e){ /* тихо */ }
     }
 
-    // 3) парсинг
     let entry=null;
-    if(cloudEntries && cloudEntries.length){ entry = cloudEntries[0]; }
+    if(cloudEntries && cloudEntries.length){ entry=cloudEntries[0]; }
     else{
       const parsed=parseEntries(text);
       if(parsed.length) entry=parsed[0];
     }
 
-    // 4) авто-приемане само ако много уверено и има име+сума
     const imgSrc=tmpCanvas.toDataURL('image/png');
     if(entry && conf>=AUTO_ACCEPT_THRESHOLD && entry.name && Number.isFinite(entry.amount)){
       const key=await sha(entry.name+'|'+entry.amount+'|'+imgSrc.slice(-64));
@@ -379,45 +337,37 @@
         return;
       }
     }
-
-    // 5) иначе → в опашката с редакция
-    queueCard({imgSrc, rawText:text, entry, conf});
+    queueCard({imgSrc, entry, conf});
   }
 
-  /************* Запази *************/
+  /*** Запази ***/
   document.getElementById('btnSave').addEventListener('click', async ()=>{
     try{
-      // сваля PNG (OCR слой)
       const png=ocr.toDataURL('image/png');
       const a=document.createElement('a'); a.href=png; a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // сегментация
       const blocks=segmentBlocks(ocr); if(!blocks.length){ toast('Няма мастило'); return; }
 
       for(const b of blocks){
-        // кроп
         const tmp=document.createElement('canvas'); tmp.width=b.w; tmp.height=b.h;
         const tctx=tmp.getContext('2d'); tctx.fillStyle='#fff'; tctx.fillRect(0,0,b.w,b.h); tctx.drawImage(ocr,b.x,b.y,b.w,b.h,0,0,b.w,b.h);
-        // фин Handwrite→Print преди OCR
         const printed=handwriteToPrintCanvas(tmp);
         await processBlock(printed);
       }
 
-      // нов лист
       dCtx.clearRect(0,0,display.width,display.height);
       oCtx.fillStyle='#ffffff'; oCtx.fillRect(0,0,ocr.width,ocr.height);
       toast('Готово: блоковете са в опашката / записани');
-
     }catch(err){ console.error(err); toast('Грешка при „Запази“'); }
   });
 
-  // Първоначално
+  // Първо търсене
   async function renderSearch(term){
     const items=(await db.all()).filter(x=>!term || x.name.toLowerCase().includes(term.toLowerCase()));
     items.sort((a,b)=>a.name.localeCompare(b.name,'bg') || a.ts-b.ts);
     rowsEl.innerHTML=''; let total=0;
-    for(const it of items){ total+=it.amount; const div=document.createElement('div'); div.innerHTML=`<span class="name">${it.name}</span><span>${it.amount.toFixed(2)} лв</span>`; rowsEl.appendChild(div); }
+    for(const it of items){ total+=it.amount; const div=document.createElement('div'); div.innerHTML=`<span>${it.name}</span><span>${it.amount.toFixed(2)} лв</span>`; rowsEl.appendChild(div); }
     sumEl.textContent=total.toFixed(2)+' лв';
   }
   renderSearch('');
