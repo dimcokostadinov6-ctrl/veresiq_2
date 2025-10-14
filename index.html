@@ -12,32 +12,30 @@
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
   .sep{flex:1}
-  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr auto}
+  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr min(420px,92vw)}
   .board-wrap{position:relative;overflow:hidden}
   canvas#board{
     width:100%;height:100%;display:block;touch-action:none;
-    background:
-      repeating-linear-gradient(to bottom,
-        var(--bg) 0px, var(--bg) 26px,
-        var(--line) 26px, var(--line) 27px);
+    background: repeating-linear-gradient(to bottom,
+      var(--bg) 0px, var(--bg) 26px, var(--line) 26px, var(--line) 27px);
   }
-  .panel{width:min(380px,92vw);background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;display:none}
-  .panel.open{display:block}
-  .panel h3{margin:.2rem 0 .6rem;font-weight:600}
-  .tabs{display:flex;gap:.4rem;margin:.25rem 0 .75rem}
-  .tab{padding:.25rem .6rem;border:1px solid #2b3b64;border-radius:.45rem;cursor:pointer}
-  .tab.active{background:#12203a}
+  aside.panel{background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;overflow:auto}
+  .tabs{display:flex;gap:.5rem;margin-bottom:.5rem}
+  .tab{padding:.25rem .6rem;border:1px solid #334166;border-radius:.5rem;background:#0b1426;cursor:pointer}
+  .tab.active{background:#1b243a}
   .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
   .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
   .list{font-size:.95rem;line-height:1.4}
-  .list div{display:grid;grid-template-columns:1fr auto auto;gap:.5rem;align-items:center;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
-  .review-card{border:1px solid #263455;border-radius:.6rem;padding:.6rem;margin:.5rem 0;display:grid;gap:.4rem;background:#0c1426}
-  .review-actions{display:flex;gap:.5rem;justify-content:flex-end}
+  .list .row{display:grid;grid-template-columns:1fr auto auto;gap:.5rem;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
+  .review-card{border:1px solid #25345c;border-radius:.6rem;padding:.6rem;margin:.6rem 0;background:#0e1628}
+  .review-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
+  .thumb{width:100%;max-height:240px;object-fit:contain;background:#0a1222;border:1px solid #223253;border-radius:.4rem;cursor:zoom-in}
+  .review-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
-  .pen-indicator{position:fixed;right:10px;top:50px;width:34px;height:34px;border-radius:50%;background:#0e1628;border:1px solid #203255;display:grid;place-items:center;z-index:6}
+  .pen-indicator{position:fixed;right:8px;top:50px;width:36px;height:36px;border-radius:50%;background:#0e1628;border:1px solid #203255;display:grid;place-items:center;z-index:6}
   .pen-indicator:after{content:"✍️";font-size:18px}
   small.mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;opacity:.8}
 </style>
@@ -53,16 +51,16 @@
   <div class="pen-indicator" title="Само със стилус"></div>
 
   <div class="stage">
-    <div class="board-wrap"><canvas id="board"></canvas></div>
-
-    <aside id="panel" class="panel" aria-label="Търсене">
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
+    </div>
+    <aside id="panel" class="panel" aria-label="панел">
       <div class="tabs">
-        <button id="tabSearch" class="tab active">Търсене</button>
-        <button id="tabReview" class="tab">За преглед</button>
+        <button class="tab active" data-tab="search">Търсене</button>
+        <button class="tab" data-tab="review">За преглед</button>
       </div>
 
-      <section id="searchSec">
-        <h3>Търсене</h3>
+      <section id="tab-search">
         <div class="field">
           <input id="q" type="search" placeholder="Име…" list="suggestions" autocomplete="off"/>
           <datalist id="suggestions"></datalist>
@@ -71,8 +69,7 @@
         <div id="rows" class="list" aria-live="polite"></div>
       </section>
 
-      <section id="reviewSec" hidden>
-        <h3>Редове за потвърждение</h3>
+      <section id="tab-review" hidden>
         <div id="reviewList"></div>
       </section>
     </aside>
@@ -81,53 +78,47 @@
   <div id="toast" class="toast"></div>
 
 <script>
-/*** === КОНФИГ === ***/
+/*** КОНФИГ: Cloud Run URL (да завършва на /ocr) ***/
 let OCR_URL = "https://ocr-980985905017.europe-west1.run.app";
-if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 
-/*** === IndexedDB === ***/
-const DB_NAME='veresia-db', STORE='names', REVIEW='review', DB_VER=3;
-function withDB(mode,store,fn){return new Promise((res,rej)=>{
-  const r=indexedDB.open(DB_NAME,DB_VER);
-  r.onupgradeneeded=()=>{const db=r.result;
-    if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-    if(!db.objectStoreNames.contains(REVIEW)) db.createObjectStore(REVIEW);
-  };
-  r.onerror=()=>rej(r.error);
-  r.onsuccess=()=>{const tx=r.result.transaction(store,mode);const s=tx.objectStore(store);
-    Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);}
-})}
+/*** IndexedDB ***/
+const DB_NAME='veresia-db', STORE='names', REVIEW='review', DB_VER=4;
+function withDB(mode,store,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
+r.onupgradeneeded=()=>{const db=r.result;
+  if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+  if(!db.objectStoreNames.contains(REVIEW)) db.createObjectStore(REVIEW,{autoIncrement:true});
+};
+r.onerror=()=>rej(r.error);
+r.onsuccess=()=>{const tx=r.result.transaction(store,mode);const s=tx.objectStore(store);
+Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
 const idb={
-  get:(store,k)=>withDB('readonly',store,s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
-  set:(store,k,v)=>withDB('readwrite',store,s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-  del:(store,k)=>withDB('readwrite',store,s=>new Promise((res,rej)=>{const r=s.delete(k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-  iterate:(store,cb)=>withDB('readonly',store,s=>new Promise((res,rej)=>{const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))
+  get:(k)=>withDB('readonly',STORE,s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
+  set:(k,v)=>withDB('readwrite',STORE,s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+  iterateAll:()=>withDB('readonly',STORE,s=>new Promise((res,rej)=>{const out=[];const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){out.push(c.value);c.continue()}else res(out)};r.onerror=()=>rej(r.error)})),
+  addReview:(obj)=>withDB('readwrite',REVIEW,s=>new Promise((res,rej)=>{const r=s.add(obj);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
+  listReview:()=>withDB('readonly',REVIEW,s=>new Promise((res,rej)=>{const out=[];const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){out.push({id:c.key,...c.value});c.continue()}else res(out)};r.onerror=()=>rej(r.error)})),
+  delReview:(id)=>withDB('readwrite',REVIEW,s=>new Promise((res,rej)=>{const r=s.delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
 };
 
-/*** === Помощни === ***/
-function toast(msg,ms=2400){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),ms)}
-const step=t=>document.getElementById('hint').textContent=t;
-
-// Само българска кирилица + 1:1 мап за визуални двойници (НЕ е автокоректор на думи)
-function normalizeBulgarian(s){
-  if(!s) return '';
-  const map={A:'А',a:'а',B:'В',E:'Е',e:'е',K:'К',k:'к',M:'М',m:'м',H:'Н',h:'н',O:'О',o:'о',P:'Р',p:'р',C:'С',c:'с',T:'Т',t:'т',X:'Х',x:'х',Y:'У',y:'у'};
-  s=s.replace(/[ABEKMHOPCTXYabekmhopctxy]/g, ch=>map[ch]||ch);
-  s=s.replace(/[^абвгдежзийклмнопрстуфхцчшщъьюяѝАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЮЯЍ\s.'’-]/g,'');
-  return s.replace(/\s+/g,' ').trim();
-}
-
-/*** === Canvas === ***/
+/*** UI / Canvas ***/
 window.addEventListener('DOMContentLoaded',()=>{
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   let drawing=false,last=null;
 
-  function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
-    canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineJoin='round';ctx.lineCap='round';
-    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';}
-  window.addEventListener('resize',resize,{passive:true});window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});resize();
+  function resize(){
+    const dpr=window.devicePixelRatio||1;
+    const r=canvas.getBoundingClientRect();
+    canvas.width=Math.floor(r.width*dpr);
+    canvas.height=Math.floor(r.height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.lineJoin='round';
+    ctx.lineCap='round';
+    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
+  }
+  window.addEventListener('resize',resize,{passive:true});
+  window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
+  resize();
 
   const isPen=e=>e.pointerType==='pen';
   const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
@@ -136,31 +127,49 @@ window.addEventListener('DOMContentLoaded',()=>{
   canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
   const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
 
-  /*** === Търсене === ***/
-  const panel=document.getElementById('panel'), btnSearch=document.getElementById('btnSearch');
-  const tabSearch=document.getElementById('tabSearch'), tabReview=document.getElementById('tabReview');
-  const searchSec=document.getElementById('searchSec'), reviewSec=document.getElementById('reviewSec');
+  const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
+  function toast(m,ms=2400){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
+  const step=t=>{hint.textContent=t};
+
+  async function saveEntry(name,amount){
+    const key=name.trim().toLowerCase();
+    const prev=await idb.get(key)||{name,total:0,items:[]};
+    prev.total=+(prev.total+amount).toFixed(2);
+    prev.items.push({amount,ts:Date.now()});
+    await idb.set(key,prev);
+  }
+  async function allEntries(){const rows=await idb.iterateAll();rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));return rows}
+
+  // Панел / табове
+  const panel=document.getElementById('panel');
+  const btnSearch=document.getElementById('btnSearch');
   const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
+  const tabButtons=[...document.querySelectorAll('.tab')];
+  const tabSearch=document.getElementById('tab-search');
+  const tabReview=document.getElementById('tab-review');
   const reviewList=document.getElementById('reviewList');
 
-  function switchTab(which){
-    if(which==='search'){tabSearch.classList.add('active');tabReview.classList.remove('active');searchSec.hidden=false;reviewSec.hidden=true;}
-    else{tabSearch.classList.remove('active');tabReview.classList.add('active');searchSec.hidden=true;reviewSec.hidden=false;renderReview();}
-  }
-  tabSearch.onclick=()=>switchTab('search'); tabReview.onclick=()=>switchTab('review');
+  btnSearch.onclick=async()=>{panel.style.display=panel.style.display?'':'block';resize();if(panel.style.display){await refreshSuggestions();renderSearch(q.value);renderReview()}};
+  tabButtons.forEach(b=>b.onclick=()=>{
+    tabButtons.forEach(x=>x.classList.remove('active')); b.classList.add('active');
+    const t=b.dataset.tab; tabSearch.hidden=(t!=='search'); tabReview.hidden=(t!=='review');
+  });
 
-  btnSearch.onclick=async()=>{panel.classList.toggle('open');resize();if(panel.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
-  async function refreshSuggestions(){const rows=[];await idb.iterate(STORE,v=>rows.push(v));rows.sort((a,b)=>a.name.localeCompare(b.name,'bg'));sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
-
+  async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
   async function renderSearch(term){
     const t=(term||'').trim().toLowerCase();
-    const rows=[]; await idb.iterate(STORE,v=>rows.push(v));
+    const rows=await allEntries();
     const items=[];
-    rows.forEach(r=>{ if(!t || r.name.toLowerCase().includes(t)){ r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts})) } });
+    rows.forEach(r=>{
+      if(!t || r.name.toLowerCase().includes(t)){
+        r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts}));
+      }
+    });
     items.sort((a,b)=>a.name.localeCompare(b.name,'bg') || a.ts-b.ts);
     let total=0; rowsEl.innerHTML='';
-    items.forEach(x=>{ total+=x.amount;
-      const d=document.createElement('div');
+    items.forEach(x=>{
+      total+=x.amount;
+      const d=document.createElement('div'); d.className='row';
       const when=new Date(x.ts).toLocaleString('bg-BG',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
       d.innerHTML=`<span>${x.name}</span><strong>${x.amount.toFixed(2)} лв</strong><small class="mono">${when}</small>`;
       rowsEl.appendChild(d);
@@ -169,136 +178,149 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   q.addEventListener('input',()=>renderSearch(q.value));
 
-  /*** === За преглед === ***/
-  async function addReviewItem({id,text,crop}){
-    // id: уникален; text: OCR ред (суров); crop: dataURL за миниатюра
-    await idb.set(REVIEW,id,{id,text,crop,ts:Date.now()});
-  }
-  async function renderReview(){
-    reviewList.innerHTML='';
-    const arr=[]; await idb.iterate(REVIEW,(v)=>arr.push(v));
-    arr.sort((a,b)=>a.ts-b.ts);
-    arr.forEach(item=>{
-      const card=document.createElement('div'); card.className='review-card';
-      const ocrRaw = (item.text||'').replace(/\s+/g,' ').trim();
-      const shown = normalizeBulgarian(ocrRaw);
-      card.innerHTML = `
-        <div style="display:flex;gap:.6rem;align-items:flex-start">
-          <img alt="снимка" src="${item.crop||''}" style="width:90px;height:60px;object-fit:cover;border:1px solid #24314f;border-radius:.4rem;background:#0b1120"/>
-          <div style="flex:1">
-            <label>Име (кирилица)</label>
-            <input class="name" value="${shown}" placeholder="Име" style="width:100%;padding:.4rem;border:1px solid #24314f;border-radius:.4rem;background:#0c1426;color:#e5e7eb"/>
-            <div style="display:flex;gap:.5rem;margin-top:.4rem">
-              <div>
-                <label>Сума</label>
-                <input class="amt" value="" inputmode="decimal" placeholder="0,00" style="width:120px;padding:.4rem;border:1px solid #24314f;border-radius:.4rem;background:#0c1426;color:#e5e7eb"/>
-              </div>
-            </div>
-            <div class="review-actions">
-              <button class="btn primary confirm">Потвърди</button>
-              <button class="btn delete">Изтрий</button>
-            </div>
-            <small class="mono">OCR: ${ocrRaw||'(без текст)'}</small>
-          </div>
-        </div>`;
-      card.querySelector('.confirm').onclick=async()=>{
-        const name=normalizeBulgarian(card.querySelector('.name').value||'');
-        const amtStr=(card.querySelector('.amt').value||'').replace(/\s+/g,'').replace(',','.');
-        const amount=parseFloat(amtStr);
-        if(!name || !Number.isFinite(amount)){ toast('Попълни коректно име и сума'); return; }
-        await saveEntry(name,amount); await idb.del(REVIEW,item.id);
-        toast('Добавено'); renderReview(); await refreshSuggestions(); renderSearch(q.value);
-      };
-      card.querySelector('.delete').onclick=async()=>{ await idb.del(REVIEW,item.id); renderReview(); };
-      reviewList.appendChild(card);
-    });
-  }
-
-  /*** === Записване в база === ***/
-  async function saveEntry(name,amount){
-    const key=name.trim().toLowerCase();
-    const prev=await idb.get(STORE,key)||{name,total:0,items:[]};
-    prev.total=+(prev.total+amount).toFixed(2);
-    prev.items.push({amount,ts:Date.now()});
-    await idb.set(STORE,key,prev);
-  }
-
-  /*** === Подготовка на изображение за OCR === ***/
+  // ——— Подготовка: контраст/бинаризация (без авто-корекция на думи)
   function prepForOCR(src){
-    const dpr=window.devicePixelRatio||1, scale=3;
+    const dpr=window.devicePixelRatio||1, scale=3.2;
     const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
     const out=document.createElement('canvas'); out.width=w; out.height=h;
     const o=out.getContext('2d',{willReadFrequently:true});
+    o.filter='contrast(200%) brightness(180%)';
     o.drawImage(src,0,0,w,h);
-    // Бинаризация без „автокорекция“
     let img=o.getImageData(0,0,w,h), d=img.data;
     for(let i=0;i<d.length;i+=4){
       const r=d[i], g=d[i+1], b=d[i+2];
-      const bright=r+g+b;
-      const isInk = bright>680; // белият „маркер“ от теб
-      const isBlue = b>60 && b>r+20 && b>g+10;
-      const v = isInk ? 0 : 255;
-      d[i]=d[i+1]=d[i+2]=(isBlue?255:v); d[i+3]=255;
+      const lum=0.299*r+0.587*g+0.114*b;
+      const isInk = lum>220;
+      const isBlueLine = b>60 && b>r+20 && b>g+10;
+      let v = isInk ? 0 : 255;
+      if(isBlueLine) v=255;
+      d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
     }
     o.putImageData(img,0,0);
     return out;
   }
 
-  /*** === OCR към бекенда (без автокорекции) === ***/
-  async function sendToOCR(dataURL){
-    try{
-      step('OCR: изпращане…');
-      const base64=dataURL.split(',')[1];
-      const r=await fetch(OCR_URL,{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({ imageBase64: base64 })});
-      const j=await r.json();
-      if(!r.ok || !j.ok) throw new Error(j?.error||('HTTP '+r.status));
+  // ——— Сегментация: режем на „редове“ (ленти)
+  function splitCanvasToLines(src){
+    const pre=prepForOCR(src);
+    const w=pre.width, h=pre.height;
+    const c=pre.getContext('2d',{willReadFrequently:true});
+    const data=c.getImageData(0,0,w,h).data;
 
-      // 1) Успешните (масив от {name,amount})
-      if(Array.isArray(j.entries)){
-        for(const e of j.entries){
-          const name=normalizeBulgarian(e.name);
-          const amt=parseFloat(String(e.amount).replace(',','.'));
-          if(name && Number.isFinite(amt)) await saveEntry(name,amt);
-          else await addReviewItem({id:`fail-${Date.now()}-${Math.random()}`, text:`${e.name||''} - ${e.amount||''}`, crop:''});
+    const inkRow=new Array(h).fill(0);
+    for(let y=0;y<h;y++){
+      let acc=0;
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;
+        const lum=data[i]; // 0=черно, 255=бяло (след моно)
+        if(lum<25) acc++;
+      }
+      inkRow[y]=acc;
+    }
+    const TH=Math.max(8, Math.floor(w*0.002));
+    const bands=[]; let inBand=false, y0=0;
+    for(let y=0;y<h;y++){
+      if(!inBand && inkRow[y]>TH){inBand=true;y0=y;}
+      if(inBand && inkRow[y]<=TH){
+        const y1=y; if(y1-y0>20) bands.push([Math.max(0,y0-6), Math.min(h,y1+6)]); inBand=false;
+      }
+    }
+    if(inBand) bands.push([Math.max(0,y0-6),h]);
+
+    const outs=[];
+    const pad=8;
+    bands.forEach(([a,b])=>{
+      let minX=w, maxX=0;
+      for(let y=a;y<b;y++){
+        for(let x=0;x<w;x++){
+          const i=(y*w+x)*4; if(data[i]<25){ if(x<minX)minX=x; if(x>maxX)maxX=x; }
         }
       }
-
-      // 2) За преглед (ако бекендът върне rawLines за по-лесно довършване)
-      if(Array.isArray(j.review)){
-        for(const it of j.review){
-          await addReviewItem({id:it.id||(`r-${Date.now()}-${Math.random()}`), text:it.text||'', crop:it.crop||''});
-        }
-      }
-
-      toast(`Записани редове: ${(j.entries&&j.entries.length)||0}`);
-      step('Готово');
-      if(panel.classList.contains('open')){ await refreshSuggestions(); renderSearch(q.value); }
-    }catch(err){ console.error('[OCR] →', err); toast('OCR грешка (виж конзолата)'); step('Грешка'); }
+      if(maxX<=minX) return;
+      const cx=Math.max(0,minX-pad), cw=Math.min(w,maxX+pad)-cx;
+      const cy=Math.max(0,a-pad), ch=Math.min(h,b+pad)-cy;
+      const crop=document.createElement('canvas'); crop.width=cw; crop.height=ch;
+      crop.getContext('2d').drawImage(pre,cx,cy,cw,ch,0,0,cw,ch);
+      outs.push(crop.toDataURL('image/png'));
+    });
+    return outs;
   }
 
-  /*** === Запази === ***/
+  async function sendPieces(pieces){
+    const payload={ pieces: pieces.map(p=>({imageBase64:p.split(',')[1]})), mode:'line' };
+    const r=await fetch(OCR_URL,{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json(); if(!r.ok || !j.ok) throw new Error(j?.error||('HTTP '+r.status));
+    return j;
+  }
+
+  async function renderReview(){
+    const items=await idb.listReview();
+    const rows=await allEntries(); const dict=rows.map(r=>r.name);
+    reviewList.innerHTML='';
+    items.forEach(item=>{
+      const card=document.createElement('div'); card.className='review-card';
+      const ocrText=(item.text||'').replace(/\s+/g,' ').trim();
+      card.innerHTML=`
+        <div class="review-head"><strong>#${item.id}</strong><span class="pill">за преглед</span></div>
+        ${item.thumb?`<img class="thumb" src="${item.thumb}" alt="ред #${item.id}"/>`:''}
+        <div class="field">
+          <input class="name" placeholder="Име (кирилица)" value="${ocrText}"/>
+          <input class="amt" placeholder="Сума (напр. 2,40)" inputmode="decimal"/>
+        </div>
+        <div class="review-actions">
+          <button class="btn primary confirm">Потвърди</button>
+          <button class="btn delete">Изтрий</button>
+        </div>`;
+      card.querySelector('.confirm').onclick=async()=>{
+        const name=(card.querySelector('.name').value||'').trim();
+        const amtStr=(card.querySelector('.amt').value||'').trim().replace(',','.');
+        if(!/[\p{Script=Cyrillic}]/u.test(name)) return toast('Име на кирилица');
+        if(!/^\d+(\.\d{1,2})$/.test(amtStr)) return toast('Сума с , или . (напр. 2,40)');
+        await saveEntry(name,+parseFloat(amtStr).toFixed(2));
+        await idb.delReview(item.id); toast('Добавено'); renderReview();
+      };
+      card.querySelector('.delete').onclick=async()=>{await idb.delReview(item.id); renderReview()};
+      reviewList.appendChild(card);
+    });
+  }
+
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
+      btnSave.disabled=true;
       step('Запис: снимка…');
       const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // OCR във фона
-      const pre=prepForOCR(canvas);
-      const dataURL=pre.toDataURL('image/png');
+      step('Сегментация…');
+      const pieces=splitCanvasToLines(canvas);
 
-      // Нов лист – веднага можеш да пишеш
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // чист лист – можеш да пишеш докато OCR работи
+      const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      // Пращаме към бекенда
-      void sendToOCR(dataURL);
-    }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
+      if(!pieces.length){ toast('Няма текст за OCR'); btnSave.disabled=false; return; }
+
+      step('OCR…');
+      const result=await sendPieces(pieces);
+
+      if(Array.isArray(result.entries)){
+        for(const e of result.entries){ await saveEntry(e.name, e.amount); }
+      }
+      if(Array.isArray(result.review)){
+        for(const r of result.review){ await idb.addReview({thumb:r.thumb,text:r.text||''}); }
+      }
+      toast(`Записани: ${(result.entries||[]).length} • За преглед: ${(result.review||[]).length}`);
+      step('Готово');
+      renderSearch(q.value); renderReview();
+    }catch(err){
+      console.error('[OCR]',err);
+      toast('OCR грешка'); step('Грешка');
+    }finally{ btnSave.disabled=false }
   };
 
-  (async()=>{await refreshSuggestions()})();
+  (async()=>{await renderReview()})();
 });
 </script>
 </body>
