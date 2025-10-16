@@ -12,6 +12,7 @@
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
   .sep{flex:1}
+
   .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr min(460px,92vw)}
   .board-wrap{position:relative;overflow:hidden}
   canvas#board{
@@ -23,25 +24,26 @@
   .tabs{display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap}
   .tab{padding:.25rem .6rem;border:1px solid #334166;border-radius:.5rem;background:#0b1426;cursor:pointer}
   .tab.active{background:#1b243a}
+
   .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
-  .field input,.field select{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
+  .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
+
   .list{font-size:.95rem;line-height:1.4}
   .list .row{display:grid;grid-template-columns:1fr auto auto;gap:.5rem;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
+
   .review-card{border:1px solid #25345c;border-radius:.6rem;padding:.6rem;margin:.6rem 0;background:#0e1628}
   .review-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
   .thumb{width:100%;max-height:240px;object-fit:contain;background:#0a1222;border:1px solid #223253;border-radius:.4rem}
   .review-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem}
+
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
+
   .pen-indicator{position:fixed;right:8px;top:50px;width:36px;height:36px;border-radius:50%;background:#0e1628;border:1px solid #203255;display:grid;place-items:center;z-index:6}
   .pen-indicator:after{content:"✍️";font-size:18px}
   small.mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;opacity:.8}
-  .grid{display:grid;gap:.5rem}
-  .grid.two{grid-template-columns:1fr 1fr}
-  .kpad{width:260px;height:160px;background:#0b1426;border:1px solid #24314f;border-radius:.5rem;touch-action:none}
-  .sub{opacity:.8;font-size:.85rem}
 </style>
 </head>
 <body>
@@ -62,7 +64,6 @@
       <div class="tabs">
         <button class="tab active" data-tab="search">Търсене</button>
         <button class="tab" data-tab="review">За преглед</button>
-        <button class="tab" data-tab="settings">Настройки</button>
       </div>
 
       <!-- ТЪРСЕНЕ -->
@@ -79,45 +80,6 @@
       <section id="tab-review" hidden>
         <div id="reviewList"></div>
       </section>
-
-      <!-- НАСТРОЙКИ (НАШ ИИ) -->
-      <section id="tab-settings" hidden>
-        <h3>Наш ИИ (профили)</h3>
-        <div class="field">
-          <label class="sub">Профил</label>
-          <select id="profile">
-            <option>Асен</option>
-            <option selected>Димчо</option>
-            <option>Мария</option>
-          </select>
-          <span class="pill" id="modelInfo">0 примера</span>
-        </div>
-
-        <h4>Тренировка: букви/цифри</h4>
-        <div class="grid two">
-          <div>
-            <canvas id="kpad" class="kpad"></canvas>
-            <div class="field">
-              <input id="charLabel" maxlength="2" placeholder="Буква/цифра (кирилица/0-9 , . -)"/>
-              <button id="btnAddChar" class="btn primary">Добави пример</button>
-            </div>
-            <div class="field">
-              <button id="btnClearPad" class="btn">Изчисти платното</button>
-              <button id="btnWipeModel" class="btn">Изтрий профил</button>
-            </div>
-          </div>
-          <div>
-            <p class="sub">Съвет: напиши всяка буква/цифра 30–50 пъти в различни размери/наклон.</p>
-            <p class="sub">Поддържани: А–Я, а–я, ѝ/Ѝ, 0–9, „, . -“</p>
-            <div id="charCount" class="sub">0 примера</div>
-            <div class="field">
-              <button id="btnExportModel" class="btn">Експорт модел</button>
-              <input id="importFile" type="file" accept="application/json" hidden/>
-              <button id="btnImportModel" class="btn">Импорт модел</button>
-            </div>
-          </div>
-        </div>
-      </section>
     </aside>
   </div>
 
@@ -125,10 +87,10 @@
 
 <script>
 /* ===================== КОНФИГ ===================== */
-let OCR_URL = "https://ocr-980985905017.europe-west1.run.app/ocr"; // ← СМЕНИ С ТВОЯ URL (завършва на /ocr)
+let OCR_URL = "https://ocr-980985905017.europe-west1.run.app"; // ← смени (да завършва на /ocr)
 
 /* ===================== СЛОЙ: Хранилище ===================== */
-const DB='veresia-data', STORE='names', REVIEW='review', MODELS='models', VER=7;
+const DB='veresia-data', STORE='names', REVIEW='review', MODELS='models', VER=8;
 function withDB(mode,store,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB,VER);
 r.onupgradeneeded=()=>{const db=r.result;
   if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
@@ -150,16 +112,13 @@ const Store={
     del:(id)=>withDB('readwrite',REVIEW,s=>new Promise((res,rej)=>{const r=s.delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
   },
   models:{
-    get:(profile)=>withDB('readonly',MODELS,s=>new Promise((res,rej)=>{const r=s.get(profile);r.onsuccess=()=>res(r.result||{samples:{}});r.onerror=()=>rej(r.error)})),
-    set:(profile,data)=>withDB('readwrite',MODELS,s=>new Promise((res,rej)=>{const r=s.put(data,profile);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-    del:(profile)=>withDB('readwrite',MODELS,s=>new Promise((res,rej)=>{const r=s.delete(profile);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+    get:(profile)=>withDB('readonly',MODELS,s=>new Promise((res,rej)=>{const r=s.get(profile);r.onsuccess=()=>res(r.result||{samples:{},names:[]});r.onerror=()=>rej(r.error)})),
   }
 };
 
-/* ===================== СЛОЙ: Утилити ===================== */
+/* ===================== Утилити ===================== */
 function toast(m,ms=2400){const el=document.getElementById('toast');el.textContent=m;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),ms)}
 const step=(t)=>{document.getElementById('hint').textContent=t};
-
 function normalizeBG(s){
   if(!s) return '';
   const map={A:'А',a:'а',B:'В',E:'Е',e:'е',K:'К',k:'к',M:'М',m:'м',H:'Н',h:'н',O:'О',o:'о',P:'Р',p:'р',C:'С',c:'с',T:'Т',t:'т',X:'Х',x:'х',Y:'У',y:'у'};
@@ -174,7 +133,7 @@ function parseManyStrict(text){
   while((m=rx.exec(t))!==null){
     const name=(m[1]||'').replace(/[^\p{Script=Cyrillic}\s.'’-]/gu,' ').replace(/\s+/g,' ').trim();
     const amtStr=String(m[2]||'').replace(',','.');
-    if(!amtStr.includes('.')) continue; // изискваме десетичен разделител
+    if(!amtStr.includes('.')) continue;
     if(!/^\d+(\.\d{1,2})$/.test(amtStr)) continue;
     const amount=parseFloat(amtStr);
     if(name && Number.isFinite(amount)) out.push({name,amount:+amount.toFixed(2)});
@@ -189,7 +148,7 @@ async function saveEntry(name,amount){
   await Store.names.set(key,prev);
 }
 
-/* ===================== СЛОЙ: Сегментация на страница → редове ===================== */
+/* ===================== Сегментация (страница → редове) ===================== */
 const Segmentation={
   prepPage(src){
     const dpr=window.devicePixelRatio||1, scale=3.0;
@@ -202,7 +161,7 @@ const Segmentation={
     for(let i=0;i<d.length;i+=4){
       const r=d[i], g=d[i+1], b=d[i+2];
       const lum=0.299*r+0.587*g+0.114*b;
-      const isInk=lum>220; // бялото мастило от твоя стилус
+      const isInk=lum>220; // бяло мастило
       const isBlue=b>60 && b>r+20 && b>g+10;
       let v=isInk?0:255; if(isBlue) v=255;
       d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
@@ -223,8 +182,7 @@ const Segmentation={
       if(inBand && row[y]<=TH){const y1=y; if(y1-y0>20) bands.push([Math.max(0,y0-6),Math.min(h,y1+6)]); inBand=false;}
     }
     if(inBand) bands.push([Math.max(0,y0-6),h]);
-    const outs=[];
-    const pad=8;
+    const outs=[]; const pad=8;
     bands.forEach(([a,b])=>{
       let minX=w,maxX=0;
       for(let y=a;y<b;y++){for(let x=0;x<w;x++){const i=(y*w+x)*4;if(data[i]<25){if(x<minX)minX=x;if(x>maxX)maxX=x;}}}
@@ -239,45 +197,28 @@ const Segmentation={
   }
 };
 
-/* ===================== СЛОЙ: Наш локален ИИ (на профил) ===================== */
-/* Проста буквена класификация (kNN по L1 върху 28x28), кирилица/цифри/.,,- */
+/* ===================== Локален ИИ (символи + имена) ===================== */
 const LocalAI={
-  PROFILES:['Асен','Димчо','Мария'],
-  _cache:{}, // profile -> model data
-  async load(profile){
-    const data=await Store.models.get(profile);
-    if(!data.samples) data.samples={};
-    this._cache[profile]=data;
-    return data;
-  },
-  async save(profile,data){
-    await Store.models.set(profile,data);
-    this._cache[profile]=data;
-  },
-  async wipe(profile){
-    await Store.models.del(profile);
-    delete this._cache[profile];
-  },
+  async load(profile){ return await Store.models.get(profile) },
   _to28x(img){
     const c=document.createElement('canvas'); c.width=28; c.height=28;
     const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,28,28);
     const d=ctx.getImageData(0,0,28,28).data;
     const v=new Uint8Array(28*28);
-    for(let i=0,j=0;i<d.length;i+=4,j++){ v[j]=d[i]; } // 0=черно, 255=бяло
+    for(let i=0,j=0;i<d.length;i+=4,j++){ v[j]=d[i]; }
     return v;
   },
-  _dist(a,b){
-    let s=0; for(let i=0;i<a.length;i++){ s+=Math.abs(a[i]-b[i]); } return s;
+  _vec112x28(img){
+    const c=document.createElement('canvas'); c.width=112; c.height=28;
+    const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,112,28);
+    const d=ctx.getImageData(0,0,112,28).data;
+    const v=new Uint8Array(112*28);
+    for(let i=0,j=0;i<d.length;i+=4,j++){ v[j]=d[i]; }
+    return v;
   },
-  addSample(model, ch, img28){
-    if(!model.samples[ch]) model.samples[ch]=[];
-    // ограничи до 200 примера на символ
-    if(model.samples[ch].length>=200) model.samples[ch].shift();
-    model.samples[ch].push(Array.from(img28));
-    return model;
-  },
-  recognizeLine(profileModel, lineCanvas){
-    // 1) вертикална проекция → сегментация на символи
+  _dist(a,b){ let s=0; const n=Math.min(a.length,b.length); for(let i=0;i<n;i++){ s+=Math.abs(a[i]-b[i]); } return s/n; }, // средна разлика [0..255]
+  recognizeLine(model, lineCanvas){
+    // символ по символ
     const w=lineCanvas.width, h=lineCanvas.height;
     const ctx=lineCanvas.getContext('2d',{willReadFrequently:true});
     const D=ctx.getImageData(0,0,w,h).data;
@@ -292,31 +233,43 @@ const LocalAI={
     if(inGlyph) cuts.push([x0,w]);
     if(!cuts.length) return { text:'', unknown:true };
 
-    // 2) класификация символ по символ
-    const textPieces=[];
-    let unknown=false;
+    const textPieces=[]; let unknown=false;
     for(const [a,b] of cuts){
       const cx=Math.max(0,a-1), cw=Math.min(w,b+1)-cx;
       const sym=document.createElement('canvas'); sym.width=cw; sym.height=h;
       sym.getContext('2d').drawImage(lineCanvas,cx,0,cw,h,0,0,cw,h);
       const vec=this._to28x(sym);
 
-      let bestCh=''; let best=Infinity;
-      for(const ch of Object.keys(profileModel.samples||{})){
-        const samples=profileModel.samples[ch]||[];
-        for(const s of samples){
-          const dist=this._dist(vec, Uint8Array.from(s));
-          if(dist<best){best=dist; bestCh=ch;}
+      let bestCh=''; let best=1e9;
+      for(const ch of Object.keys(model.samples||{})){
+        for(const s of (model.samples[ch]||[])){
+          const d=this._dist(vec, Uint8Array.from(s));
+          if(d<best){best=d; bestCh=ch;}
         }
       }
       if(!bestCh){ textPieces.push('□'); unknown=true; }
       else textPieces.push(bestCh);
     }
     return { text: normalizeBG(textPieces.join('')), unknown };
+  },
+  matchName(model, lineCanvas){
+    if(!model?.names?.length) return null;
+    const w=lineCanvas.width;
+    // вземи лява част (името обикновено е вляво от разделителя)
+    const left=document.createElement('canvas'); left.width=Math.floor(w*0.6); left.height=lineCanvas.height;
+    left.getContext('2d').drawImage(lineCanvas,0,0,left.width,left.height,0,0,left.width,left.height);
+    const vec=this._vec112x28(left);
+    let best=null, bestD=1e9;
+    for(const rec of model.names){
+      const d=this._dist(vec, Uint8Array.from(rec.vec));
+      if(d<bestD){bestD=d; best=rec;}
+    }
+    // прагове: <30 → силна прилика; <60 → само като подсказка
+    return best?{text:best.text, score:bestD}:null;
   }
 };
 
-/* ===================== СЛОЙ: Cloud OCR клиент ===================== */
+/* ===================== Cloud OCR ===================== */
 const CloudOCR={
   async ocrPieces(piecesDataURLs){
     const payload={ pieces: piecesDataURLs.map(p=>({imageBase64:p.split(',')[1]})) };
@@ -326,9 +279,12 @@ const CloudOCR={
   }
 };
 
-/* ===================== СЛОЙ: UI / Приложение ===================== */
+/* ===================== UI / Приложение ===================== */
 window.addEventListener('DOMContentLoaded',()=>{
-  /* ---- Платно за главно писане ---- */
+  // Настройки на отделна страница
+  document.getElementById('btnSettings').onclick=()=>{ location.href='settings.html' };
+
+  // Платно
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
   function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
@@ -345,23 +301,21 @@ window.addEventListener('DOMContentLoaded',()=>{
   canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
   const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
 
-  /* ---- Панел / табове ---- */
+  // Панел/табоVE
   const panel=document.getElementById('panel');
   const btnSearch=document.getElementById('btnSearch');
-  const btnSettings=document.getElementById('btnSettings');
   const tabs=[...document.querySelectorAll('.tab')];
   const secSearch=document.getElementById('tab-search');
   const secReview=document.getElementById('tab-review');
-  const secSettings=document.getElementById('tab-settings');
   function showPanel(){panel.style.display='block';resize()}
   function activateTab(id){
     tabs.forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
-    secSearch.hidden=(id!=='search'); secReview.hidden=(id!=='review'); secSettings.hidden=(id!=='settings');
+    secSearch.hidden=(id!=='search'); secReview.hidden=(id!=='review');
   }
   btnSearch.onclick=()=>{showPanel();activateTab('search');renderSearch();renderReview();};
-  btnSettings.onclick=()=>{showPanel();activateTab('settings');refreshModelInfo();};
+  tabs.forEach(b=>b.onclick=()=>activateTab(b.dataset.tab));
 
-  /* ---- Търсене ---- */
+  // Търсене
   const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
   async function refreshSuggestions(){const rows=await Store.names.all();sugg.innerHTML='';rows.sort((a,b)=>a.name.localeCompare(b.name,'bg')).forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
   async function renderSearch(){
@@ -381,7 +335,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   q.addEventListener('input',renderSearch);
 
-  /* ---- За преглед ---- */
+  // За преглед
   const reviewList=document.getElementById('reviewList');
   async function renderReview(){
     const items=await Store.review.list();
@@ -393,7 +347,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         <div class="review-head"><strong>#${item.id}</strong><span class="pill">за преглед</span></div>
         ${item.thumb?`<img class="thumb" src="${item.thumb}" alt="ред #${item.id}"/>`:''}
         <div class="field">
-          <input class="name" placeholder="Име (кирилица)" value="${txt}"/>
+          <input class="name" placeholder="Име (кирилица)" value="${item.suggestName||txt}"/>
           <input class="amt" placeholder="Сума (напр. 2,40)" inputmode="decimal"/>
         </div>
         <div class="review-actions">
@@ -413,65 +367,14 @@ window.addEventListener('DOMContentLoaded',()=>{
     });
   }
 
-  /* ---- Наш ИИ: Настройки/обучение ---- */
-  const profileSel=document.getElementById('profile');
-  const kpad=document.getElementById('kpad');
-  const kctx=kpad.getContext('2d');
-  function clearK(){kctx.fillStyle='#0b1426';kctx.fillRect(0,0,kpad.width,kpad.height)}
-  clearK();
-  let drawingK=false,lastK=null;
-  const isPenK=e=>e.pointerType==='pen';
-  const posK=e=>{const r=kpad.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
-  kpad.addEventListener('pointerdown',e=>{if(!isPenK(e))return;e.preventDefault();drawingK=true;lastK=posK(e)});
-  kpad.addEventListener('pointermove',e=>{if(!drawingK||!isPenK(e))return;const p=posK(e);kctx.lineWidth=2+p.p*3.5;kctx.lineCap='round';kctx.lineJoin='round';kctx.strokeStyle='#fff';kctx.beginPath();kctx.moveTo(lastK.x,lastK.y);kctx.lineTo(p.x,p.y);kctx.stroke();lastK=p;});
-  kpad.addEventListener('pointerup',()=>drawingK=false);kpad.addEventListener('pointercancel',()=>drawingK=false);kpad.addEventListener('pointerleave',()=>drawingK=false);
-  document.getElementById('btnClearPad').onclick=clearK;
-
-  const charLabel=document.getElementById('charLabel');
-  const modelInfo=document.getElementById('modelInfo');
-  const charCount=document.getElementById('charCount');
-
-  let currentModel={samples:{}};
-  async function loadModel(){ currentModel=await LocalAI.load(profileSel.value); refreshModelInfo(); }
-  function refreshModelInfo(){
-    let total=0; for(const k in (currentModel.samples||{})) total+=currentModel.samples[k].length;
-    modelInfo.textContent=`${total} примера`; charCount.textContent=`${Object.keys(currentModel.samples||{}).length} символа / ${total} примера`;
-  }
-  profileSel.onchange=loadModel;
-
-  document.getElementById('btnAddChar').onclick=async()=>{
-    const ch=(charLabel.value||'').trim();
-    if(!/^[абвгдежзийклмнопрстуфхцчшщъьюяѝАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЮЯЍ0-9,\.\-\s]$/.test(ch)) return toast('Само 1 символ: кирилица/0-9/,.-');
-    // нормализирай платното → бинаризация
-    const pre=Segmentation.prepPage(kpad);
-    currentModel=LocalAI.addSample(currentModel, ch, LocalAI._to28x(pre));
-    await LocalAI.save(profileSel.value, currentModel);
-    refreshModelInfo();
-    toast('Добавен пример'); clearK();
-  };
-  document.getElementById('btnWipeModel').onclick=async()=>{await LocalAI.wipe(profileSel.value); currentModel={samples:{}}; refreshModelInfo(); toast('Профилът е изтрит')};
-  document.getElementById('btnExportModel').onclick=async()=>{
-    const data=await Store.models.get(profileSel.value);
-    const blob=new Blob([JSON.stringify({profile:profileSel.value,version:1,model:data})],{type:'application/json'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`model-${profileSel.value}.json`; a.click(); URL.revokeObjectURL(a.href);
-  };
-  document.getElementById('btnImportModel').onclick=()=>document.getElementById('importFile').click();
-  document.getElementById('importFile').onchange=async(e)=>{
-    const f=e.target.files[0]; if(!f) return;
-    const txt=await f.text(); const j=JSON.parse(txt);
-    if(j?.profile && j?.model){ await Store.models.set(j.profile,j.model); if(profileSel.value===j.profile){currentModel=j.model; refreshModelInfo();} toast('Импортиран модел') }
-  };
-
-  loadModel(); // зареди стартово
-
-  /* ---- Композит за Cloud: печатен текст върху реда (ако нашият ИИ не успее) ---- */
+  // Композит (печатен текст върху реда) за Cloud
   function overlayPrinted(lineCanvas, printedText){
     const w=lineCanvas.width, h=lineCanvas.height;
     const c=document.createElement('canvas'); c.width=w; c.height=h;
     const g=c.getContext('2d');
-    g.drawImage(lineCanvas,0,0); // оригинал
-    g.globalAlpha=0.85; // леко над реда
-    g.fillStyle='#ffffff'; // бяло мастило
+    g.drawImage(lineCanvas,0,0);
+    g.globalAlpha=0.85;
+    g.fillStyle='#ffffff';
     g.font=`${Math.max(16, Math.floor(h*0.6))}px ui-sans-serif,system-ui,Segoe UI,Roboto`;
     g.textBaseline='middle';
     g.fillText(printedText, Math.floor(h*0.1), Math.floor(h*0.5));
@@ -479,58 +382,85 @@ window.addEventListener('DOMContentLoaded',()=>{
     return c.toDataURL('image/png');
   }
 
-  /* ---- Запази (PNG + локален ИИ + Cloud OCR във фона) ---- */
+  // Зареди модел (по подразбиране профил „Димчо“)
+  let currentModel={samples:{},names:[]};
+  (async()=>{ currentModel=await LocalAI.load('Димчо'); })();
+
+  // Запази
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
       btnSave.disabled=true; step('Запис: снимка…');
 
-      // 1) PNG на страницата
+      // PNG на цялата страница
       const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // 2) Сегментация → линии
+      // Сегментация → линии
       step('Сегментация…');
       const pre=Segmentation.prepPage(canvas);
       const lines=Segmentation.splitLines(pre);
 
-      // 3) нов лист – можеш да пишеш докато OCR работи
+      // Нов лист — можеш да пишеш веднага
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
       if(!lines.length){ toast('Няма текст'); btnSave.disabled=false; return; }
 
-      // 4) Локален ИИ по лента → ако пълен успех → запис; иначе композит и към Cloud
       const piecesForCloud=[];
+      const reviewWithSuggest=[]; // {thumb,suggestName}
       let saved=0, toReview=0;
 
       for(const line of lines){
         const res=LocalAI.recognizeLine(currentModel, line);
         const txt=res.text || '';
         const parsed=parseManyStrict(txt);
-        // Успех (всички двойки разчетени само от локален ИИ)
+
         if(parsed.length && !res.unknown){
           for(const e of parsed){ await saveEntry(e.name,e.amount); saved++; }
-        }else{
-          // Композит: напечатай това, което знаем; ако нищо не знаем – пращаме оригинала
-          const printed = txt && txt.replace(/□+/g,' ');
-          const dataURL = printed ? overlayPrinted(line, printed) : line.toDataURL('image/png');
-          piecesForCloud.push(dataURL);
+          continue;
         }
+
+        // опитай съвпадение по обучени ИМЕНА
+        const hit=LocalAI.matchName(currentModel, line); // {text, score} | null
+        const strict = hit && hit.score<30; // силна прилика
+        const soft   = hit && hit.score<60;
+
+        // ако има сума в txt, но името е неясно → ако има STRONG hit, записваме
+        const amtM = /([0-9]{1,4})(?:[.,]([0-9]{1,2}))/.exec(txt);
+        if(amtM && strict){
+          const amount=parseFloat((amtM[1]+'.'+(amtM[2]||'0')).replace('..','.'));
+          if(Number.isFinite(amount)){ await saveEntry(hit.text,+amount.toFixed(2)); saved++; continue; }
+        }
+
+        // иначе пращаме към Cloud; ако имаме soft/strict име — отпечатай го като подсказка
+        const printed = (soft||strict) ? (hit.text+' - ') : (txt && txt.replace(/□+/g,' '));
+        const dataURL = printed ? overlayPrinted(line, printed) : line.toDataURL('image/png');
+        piecesForCloud.push(dataURL);
+        if(soft||strict) reviewWithSuggest.push({thumb:dataURL,suggestName:hit.text});
+        else reviewWithSuggest.push({thumb:dataURL,suggestName:''});
       }
 
-      // 5) Към Cloud (ако има нужда)
       if(piecesForCloud.length){
         step('Cloud OCR…');
         try{
           const r=await CloudOCR.ocrPieces(piecesForCloud);
           if(Array.isArray(r.entries)) for(const e of r.entries){ await saveEntry(e.name,e.amount); saved++; }
-          if(Array.isArray(r.review))  for(const x of r.review){ await Store.review.add({thumb:x.thumb,text:x.text||''}); toReview++; }
+          // за тези, които пак не се разчитат — попълваме „За преглед“, със запазена подсказка
+          if(Array.isArray(r.review)){
+            for(let i=0;i<r.review.length;i++){
+              const base=r.review[i];
+              const sug=reviewWithSuggest[i];
+              await Store.review.add({thumb:(base.thumb||sug.thumb), text:(base.text||''), suggestName:sug.suggestName||''});
+              toReview++;
+            }
+          }
         }catch(err){
           console.error('[Cloud OCR]',err);
-          // ако нещо гръмне – всички парчета отиват за преглед, нищо не губим
-          for(const d of piecesForCloud) await Store.review.add({thumb:d,text:''}), toReview++;
+          for(const sug of reviewWithSuggest){
+            await Store.review.add({thumb:sug.thumb, text:'', suggestName:sug.suggestName||''}); toReview++;
+          }
         }
       }
 
@@ -542,7 +472,6 @@ window.addEventListener('DOMContentLoaded',()=>{
     }finally{ btnSave.disabled=false }
   };
 
-  // първоначално
   (async()=>{ renderSearch(); renderReview(); })();
 });
 </script>
