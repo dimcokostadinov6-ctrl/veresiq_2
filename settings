@@ -1,1 +1,239 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Veresia — Настройки</title>
+<style>
+  :root{--bg:#0e1116;--ink:#f8fafc}
+  html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
+  .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.6rem .8rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
+  .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
+  .btn:hover{border-color:#ffffff44}
+  .btn.primary{border-color:#60a5fa;background:#1e293b}
+  .sep{flex:1}
+  .wrap{position:fixed;inset:50px 0 0 0;display:grid;grid-template-columns:1fr min(430px,92vw);gap:1rem;padding:1rem}
+  .pad-wrap{position:relative;border:1px solid #1f2a44;border-radius:.75rem;overflow:hidden}
+  canvas#kpad{
+    width:100%;height:72vh;display:block;touch-action:none;background:#0b1426;
+    box-shadow:inset 0 0 0 1px #24314f;
+  }
+  .panel{border:1px solid #1f2a44;border-radius:.75rem;padding:.75rem;background:#0b1220}
+  .field{display:flex;gap:.5rem;align-items:center;margin:.4rem 0 .9rem}
+  .field input,.field select{flex:1;padding:.5rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
+  .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
+  .sub{opacity:.85}
+  .group{margin-top:.9rem;padding-top:.6rem;border-top:1px dashed #25345c}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
+  .toast.show{display:block}
+  ul{margin:.2rem 0 .6rem;padding-left:1.2rem}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <button class="btn" onclick="location.href='index.html'">← Начало</button>
+    <strong>Настройки / Обучение</strong>
+    <div class="sep"></div>
+    <span id="hint" class="sub">✍️ Само писалка</span>
+  </div>
 
+  <div class="wrap">
+    <div class="pad-wrap"><canvas id="kpad"></canvas></div>
+
+    <aside class="panel">
+      <h3>Наш ИИ — профили</h3>
+      <div class="field">
+        <label class="sub">Профил</label>
+        <select id="profile">
+          <option>Асен</option>
+          <option selected>Димчо</option>
+          <option>Мария</option>
+        </select>
+        <span id="modelInfo" class="pill">0 примера</span>
+      </div>
+
+      <div class="group">
+        <h4>Тренировка на символ</h4>
+        <div class="field">
+          <input id="charLabel" maxlength="2" placeholder="Буква/цифра (кирилица/0-9 , . -)"/>
+        </div>
+        <div class="field">
+          <button id="btnAddChar" class="btn primary">Добави пример</button>
+          <button id="btnClearPad" class="btn">Изчисти платното</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>Тренировка на име (по избор)</h4>
+        <div class="field">
+          <input id="nameLabel" placeholder="Име на кирилица (напр. Асен)"/>
+        </div>
+        <div class="field">
+          <button id="btnAddName" class="btn primary">Добави име</button>
+          <span id="nameCount" class="pill">0 имена</span>
+        </div>
+        <p class="sub">Пиши цялото име в платното и натисни „Добави име“. Добре е да добавиш различни варианти на същото име (размер/наклон).</p>
+      </div>
+
+      <div class="group">
+        <h4>Експорт / Импорт / Изтриване</h4>
+        <div class="field">
+          <button id="btnExportModel" class="btn">Експорт модел</button>
+          <input id="importFile" type="file" accept="application/json" hidden/>
+          <button id="btnImportModel" class="btn">Импорт модел</button>
+        </div>
+        <div class="field">
+          <button id="btnWipeModel" class="btn">Изтрий профил</button>
+        </div>
+        <ul class="sub">
+          <li>Експортът съдържа символи + имена.</li>
+          <li>Импортът замества/допълва текущия профил.</li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+/* ===== Хранилище ===== */
+const DB='veresia-data', MODELS='models', VER=8;
+function withDB(mode,store,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB,VER);
+r.onupgradeneeded=()=>{const db=r.result; if(!db.objectStoreNames.contains(MODELS)) db.createObjectStore(MODELS);};
+r.onerror=()=>rej(r.error);
+r.onsuccess=()=>{const tx=r.result.transaction(store,mode);const s=tx.objectStore(store);
+Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
+const Models={
+  get:(profile)=>withDB('readonly',MODELS,s=>new Promise((res,rej)=>{const r=s.get(profile);r.onsuccess=()=>res(r.result||{samples:{},names:[]});r.onerror=()=>rej(r.error)})),
+  set:(profile,data)=>withDB('readwrite',MODELS,s=>new Promise((res,rej)=>{const r=s.put(data,profile);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+  del:(profile)=>withDB('readwrite',MODELS,s=>new Promise((res,rej)=>{const r=s.delete(profile);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+};
+
+/* ===== UI helpers ===== */
+function toast(m,ms=2400){const el=document.getElementById('toast');el.textContent=m;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),ms)}
+const step=(t)=>{document.getElementById('hint').textContent=t};
+
+/* ===== Обучение ===== */
+const LocalAI={
+  _to28x(img){
+    const c=document.createElement('canvas'); c.width=28; c.height=28;
+    const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,28,28);
+    const d=ctx.getImageData(0,0,28,28).data;
+    const v=new Uint8Array(28*28);
+    for(let i=0,j=0;i<d.length;i+=4,j++){ v[j]=d[i]; }
+    return v;
+  },
+  _vec112x28(img){
+    const c=document.createElement('canvas'); c.width=112; c.height=28;
+    const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,112,28);
+    const d=ctx.getImageData(0,0,112,28).data;
+    const v=new Uint8Array(112*28);
+    for(let i=0,j=0;i<d.length;i+=4,j++){ v[j]=d[i]; }
+    return v;
+  },
+  addSample(model, ch, img28){
+    if(!model.samples) model.samples={};
+    if(!model.samples[ch]) model.samples[ch]=[];
+    if(model.samples[ch].length>=200) model.samples[ch].shift();
+    model.samples[ch].push(Array.from(img28));
+    return model;
+  },
+  addName(model, nameText, vec112x28){
+    if(!model.names) model.names=[];
+    model.names.push({text:nameText, vec:Array.from(vec112x28)});
+    return model;
+  }
+};
+
+/* ===== Платно ===== */
+const kpad=document.getElementById('kpad');
+const kctx=kpad.getContext('2d',{willReadFrequently:true});
+function resizePad(){
+  const dpr=window.devicePixelRatio||1;
+  const r=kpad.getBoundingClientRect();
+  kpad.width=Math.floor(r.width*dpr);
+  kpad.height=Math.floor(r.height*dpr);
+  kctx.setTransform(dpr,0,0,dpr,0,0);
+  kctx.fillStyle='#0b1426'; kctx.fillRect(0,0,kpad.width,kpad.height);
+}
+window.addEventListener('resize',resizePad,{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(resizePad,50),{passive:true});
+resizePad();
+
+let drawing=false,last=null;
+const isPen=e=>e.pointerType==='pen';
+const pos=e=>{const r=kpad.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
+kpad.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
+kpad.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);kctx.lineWidth=2+p.p*3.5;kctx.lineCap='round';kctx.lineJoin='round';kctx.strokeStyle='#fff';kctx.beginPath();kctx.moveTo(last.x,last.y);kctx.lineTo(p.x,p.y);kctx.stroke();last=p;});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>kpad.addEventListener(ev,()=>{drawing=false;last=null}));
+
+function clearPad(){kctx.fillStyle='#0b1426';kctx.fillRect(0,0,kpad.width,kpad.height)}
+
+/* ===== Контроли ===== */
+const profileSel=document.getElementById('profile');
+const modelInfo=document.getElementById('modelInfo');
+const charLabel=document.getElementById('charLabel');
+const nameLabel=document.getElementById('nameLabel');
+const nameCount=document.getElementById('nameCount');
+
+let currentModel={samples:{},names:[]};
+async function loadModel(){ currentModel=await Models.get(profileSel.value); refreshModelInfo(); }
+function refreshModelInfo(){
+  let total=0, kinds=0; for(const k in (currentModel.samples||{})){ total+=currentModel.samples[k].length; kinds++; }
+  modelInfo.textContent=`${total} примера`;
+  nameCount.textContent=`${(currentModel.names||[]).length} имена`;
+}
+profileSel.onchange=loadModel;
+
+document.getElementById('btnAddChar').onclick=async()=>{
+  const ch=(charLabel.value||'').trim();
+  if(!/^[абвгдежзийклмнопрстуфхцчшщъьюяѝАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЮЯЍ0-9,\.\-\s]$/.test(ch)) return toast('Само 1 символ: кирилица/0-9/,.-');
+  const tmp=document.createElement('canvas'); tmp.width=kpad.width; tmp.height=kpad.height;
+  tmp.getContext('2d').drawImage(kpad,0,0);
+  const prep=document.createElement('canvas'); prep.width=56; prep.height=56;
+  prep.getContext('2d').drawImage(tmp,0,0,prep.width,prep.height);
+  const vec=LocalAI._to28x(prep);
+  currentModel=LocalAI.addSample(currentModel,ch,vec);
+  await Models.set(profileSel.value,currentModel);
+  refreshModelInfo();
+  toast('Добавен пример'); clearPad();
+};
+
+document.getElementById('btnAddName').onclick=async()=>{
+  const nm=(nameLabel.value||'').trim();
+  if(!/^[\p{Script=Cyrillic}\s.'’-]{2,50}$/u.test(nm)) return toast('Име само на кирилица (2–50 знака)');
+  // вектор 112x28 от текущото писане
+  const tmp=document.createElement('canvas'); tmp.width=kpad.width; tmp.height=kpad.height;
+  tmp.getContext('2d').drawImage(kpad,0,0);
+  const vec=LocalAI._vec112x28(tmp);
+  currentModel=LocalAI.addName(currentModel,nm,vec);
+  await Models.set(profileSel.value,currentModel);
+  refreshModelInfo();
+  toast('Добавено име'); clearPad();
+};
+
+document.getElementById('btnClearPad').onclick=clearPad;
+
+document.getElementById('btnExportModel').onclick=async()=>{
+  const data=await Models.get(profileSel.value);
+  const blob=new Blob([JSON.stringify({profile:profileSel.value,version:2,model:data})],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`model-${profileSel.value}.json`; a.click(); URL.revokeObjectURL(a.href);
+};
+
+document.getElementById('btnImportModel').onclick=()=>document.getElementById('importFile').click();
+document.getElementById('importFile').onchange=async(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  const txt=await f.text(); const j=JSON.parse(txt);
+  if(j?.profile && j?.model){ await Models.set(j.profile,j.model); if(profileSel.value===j.profile){currentModel=j.model; refreshModelInfo();} toast('Импортиран модел') }
+};
+
+document.getElementById('btnWipeModel').onclick=async()=>{
+  await Models.del(profileSel.value);
+  currentModel={samples:{},names:[]}; refreshModelInfo(); toast('Профилът е изтрит');
+};
+
+// старт
+loadModel();
+</script>
+</body>
+</html>
