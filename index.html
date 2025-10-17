@@ -5,79 +5,75 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>Veresia</title>
 <style>
-  :root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc}
+  :root{--bg:#0e1116;--line:#1e3558;--ink:#f8fafc;--panel:#0b1220}
   html,body{margin:0;height:100%;background:#0b0f14;color:#e5e7eb;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;touch-action:none}
   .topbar{position:fixed;inset:0 0 auto 0;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:rgba(11,15,20,.65);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
   .btn{appearance:none;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;background:transparent;padding:.45rem .7rem;border-radius:.5rem;font-size:.95rem;cursor:pointer}
   .btn:hover{border-color:#ffffff44}
   .btn.primary{border-color:#60a5fa;background:#1e293b}
   .sep{flex:1}
-
-  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr min(460px,92vw)}
+  .stage{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:1fr auto}
   .board-wrap{position:relative;overflow:hidden}
   canvas#board{
     width:100%;height:100%;display:block;touch-action:none;
-    background: repeating-linear-gradient(to bottom,
-      var(--bg) 0px, var(--bg) 26px, var(--line) 26px, var(--line) 27px);
+    background:
+      repeating-linear-gradient(to bottom,
+        var(--bg) 0px, var(--bg) 26px,
+        var(--line) 26px, var(--line) 27px);
   }
-  aside.panel{background:#0b1220;border-left:1px solid #1f2a44;padding:.75rem;overflow:auto}
-  .tabs{display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap}
-  .tab{padding:.25rem .6rem;border:1px solid #334166;border-radius:.5rem;background:#0b1426;cursor:pointer}
-  .tab.active{background:#1b243a}
-
+  .panel{width:min(480px,96vw);background:var(--panel);border-left:1px solid #1f2a44;padding:.75rem;display:none;overflow:auto}
+  .panel.open{display:block}
+  .panel h3{margin:.2rem 0 .6rem;font-weight:600}
+  .tabs{display:flex;gap:.5rem;margin:.25rem 0 .75rem}
+  .tabs button{padding:.3rem .6rem;border:1px solid #2b3b64;background:#0c1426;color:#e5e7eb;border-radius:.45rem;cursor:pointer}
+  .tabs button.active{background:#1e293b;border-color:#60a5fa}
   .field{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .75rem}
   .field input{flex:1;padding:.45rem .6rem;border-radius:.45rem;background:#0c1426;color:#e5e7eb;border:1px solid #24314f}
   .pill{font-size:.8rem;padding:.2rem .45rem;border:1px solid #2b3b64;border-radius:999px}
-
   .list{font-size:.95rem;line-height:1.4}
-  .list .row{display:grid;grid-template-columns:1fr auto auto;gap:.5rem;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
-
-  .review-card{border:1px solid #25345c;border-radius:.6rem;padding:.6rem;margin:.6rem 0;background:#0e1628}
-  .review-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
-  .thumb{width:100%;max-height:240px;object-fit:contain;background:#0a1222;border:1px solid #223253;border-radius:.4rem}
-  .review-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem}
-
+  .list div{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:.4rem;padding:.35rem .2rem;border-bottom:1px dashed #1c2744}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:#111827;border:1px solid #374151;padding:.6rem .8rem;border-radius:.6rem;z-index:10;display:none}
   .toast.show{display:block}
   #hint{font-size:.85rem;opacity:.9}
-
-  .pen-indicator{position:fixed;right:8px;top:50px;width:36px;height:36px;border-radius:50%;background:#0e1628;border:1px solid #203255;display:grid;place-items:center;z-index:6}
-  .pen-indicator:after{content:"✍️";font-size:18px}
-  small.mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;opacity:.8}
+  .review-card{border:1px solid #233156;border-radius:.6rem;padding:.6rem;margin:.6rem 0;background:#0d1424}
+  .review-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem}
+  .thumb{width:100%;max-width:100%;border:1px solid #2a3a60;border-radius:.4rem;background:#0a0f1a}
+  .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
 </style>
 </head>
 <body>
   <div class="topbar">
     <strong>Veresia</strong>
     <button id="btnSave" class="btn primary">Запази</button>
-    <button id="btnSettings" class="btn">Настройки</button>
     <div class="sep"></div>
+    <a class="btn" href="./settings.html">Настройки</a>
     <button id="btnSearch" class="btn">Търсене</button>
     <span id="hint" title="Пише се само със стилус">✍️ Само писалка</span>
   </div>
-  <div class="pen-indicator" title="Само със стилус"></div>
 
   <div class="stage">
-    <div class="board-wrap"><canvas id="board"></canvas></div>
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
+    </div>
 
-    <aside id="panel" class="panel" aria-label="панел">
+    <aside id="side" class="panel" aria-label="Търсене">
       <div class="tabs">
-        <button class="tab active" data-tab="search">Търсене</button>
-        <button class="tab" data-tab="review">За преглед</button>
+        <button id="tabSearch" class="active">Търсене</button>
+        <button id="tabReview">За преглед</button>
       </div>
 
-      <!-- ТЪРСЕНЕ -->
-      <section id="tab-search">
+      <section id="searchView">
+        <h3>Търсене</h3>
         <div class="field">
-          <input id="q" type="search" placeholder="Име…" list="suggestions" autocomplete="off"/>
+          <input id="q" type="search" placeholder="Име…" list="suggestions" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/>
           <datalist id="suggestions"></datalist>
           <span id="sum" class="pill">0.00 лв</span>
         </div>
         <div id="rows" class="list" aria-live="polite"></div>
       </section>
 
-      <!-- ЗА ПРЕГЛЕД -->
-      <section id="tab-review" hidden>
+      <section id="reviewView" style="display:none">
+        <h3>Редове за потвърждение</h3>
         <div id="reviewList"></div>
       </section>
     </aside>
@@ -86,393 +82,316 @@
   <div id="toast" class="toast"></div>
 
 <script>
-/* ===================== КОНФИГ ===================== */
-let OCR_URL = "https://ocr-980985905017.europe-west1.run.app"; // ← смени (да завършва на /ocr)
+/*** КОНФИГ — СЛОЖИ ТВОЯ Cloud Run URL (трябва да завършва на /ocr) ***/
+let OCR_URL = "https://ocr-980985905017.europe-west1.run.app/ocr";
+if (!/\/ocr\/?$/.test(OCR_URL)) OCR_URL = OCR_URL.replace(/\/?$/, "/ocr");
 
-/* ===================== СЛОЙ: Хранилище ===================== */
-const DB='veresia-data', STORE='names', REVIEW='review', MODELS='models', VER=8;
-function withDB(mode,store,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB,VER);
+/*** IndexedDB ***/
+const DB_NAME='veresia-db', STORE='names', REVIEW='review', DB_VER=3;
+function withDB(mode,fn){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);
 r.onupgradeneeded=()=>{const db=r.result;
   if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-  if(!db.objectStoreNames.contains(REVIEW)) db.createObjectStore(REVIEW,{autoIncrement:true});
-  if(!db.objectStoreNames.contains(MODELS)) db.createObjectStore(MODELS);
+  if(!db.objectStoreNames.contains(REVIEW)) db.createObjectStore(REVIEW);
 };
 r.onerror=()=>rej(r.error);
-r.onsuccess=()=>{const tx=r.result.transaction(store,mode);const s=tx.objectStore(store);
-Promise.resolve(fn(s)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
-const Store={
-  names:{
-    get:(k)=>withDB('readonly',STORE,s=>new Promise((res,rej)=>{const r=s.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
-    set:(k,v)=>withDB('readwrite',STORE,s=>new Promise((res,rej)=>{const r=s.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-    all:()=>withDB('readonly',STORE,s=>new Promise((res,rej)=>{const out=[];const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){out.push(c.value);c.continue()}else res(out)};r.onerror=()=>rej(r.error)})),
-  },
-  review:{
-    add:(obj)=>withDB('readwrite',REVIEW,s=>new Promise((res,rej)=>{const r=s.add(obj);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
-    list:()=>withDB('readonly',REVIEW,s=>new Promise((res,rej)=>{const out=[];const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){out.push({id:c.key,...c.value});c.continue()}else res(out)};r.onerror=()=>rej(r.error)})),
-    del:(id)=>withDB('readwrite',REVIEW,s=>new Promise((res,rej)=>{const r=s.delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
-  },
-  models:{
-    get:(profile)=>withDB('readonly',MODELS,s=>new Promise((res,rej)=>{const r=s.get(profile);r.onsuccess=()=>res(r.result||{samples:{},names:[]});r.onerror=()=>rej(r.error)})),
-  }
+r.onsuccess=()=>{const tx=r.result.transaction([STORE,REVIEW],mode);const s=tx.objectStore(STORE);const rv=tx.objectStore(REVIEW);
+Promise.resolve(fn(s,rv)).then(v=>{tx.oncomplete=()=>res(v);tx.onerror=()=>rej(tx.error);},rej);} }) }
+const idb={
+  get:(k,bag=STORE)=>withDB('readonly',(s,rv)=>new Promise((res,rej)=>{const o=bag===STORE?s:rv;const r=o.get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})),
+  set:(k,v,bag=STORE)=>withDB('readwrite',(s,rv)=>new Promise((res,rej)=>{const o=bag===STORE?s:rv;const r=o.put(v,k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+  del:(k,bag=STORE)=>withDB('readwrite',(s,rv)=>new Promise((res,rej)=>{const o=bag===STORE?s:rv;const r=o.delete(k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})),
+  iterate:(bag,cb)=>withDB('readonly',(s,rv)=>new Promise((res,rej)=>{const o=bag===STORE?s:rv;const r=o.openCursor();r.onsuccess=()=>{const c=r.result;if(c){cb(c.value,c.key);c.continue()}else res()};r.onerror=()=>rej(r.error)}))
 };
 
-/* ===================== Утилити ===================== */
-function toast(m,ms=2400){const el=document.getElementById('toast');el.textContent=m;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),ms)}
-const step=(t)=>{document.getElementById('hint').textContent=t};
-function normalizeBG(s){
-  if(!s) return '';
-  const map={A:'А',a:'а',B:'В',E:'Е',e:'е',K:'К',k:'к',M:'М',m:'м',H:'Н',h:'н',O:'О',o:'о',P:'Р',p:'р',C:'С',c:'с',T:'Т',t:'т',X:'Х',x:'х',Y:'У',y:'у'};
-  s=s.replace(/[ABEKMHOPCTXYabekmhopctxy]/g,ch=>map[ch]||ch).replace(/[–—−]/g,'-').replace(/\u00A0/g,' ');
-  s=s.replace(/[^абвгдежзийклмнопрстуфхцчшщъьюяѝАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЮЯЍ0-9\s.'’,\-=:]/g,'');
-  return s.replace(/\s+/g,' ').trim();
-}
-function parseManyStrict(text){
-  const t=normalizeBG(text);
-  const rx=/([\p{Script=Cyrillic}\s.'’-]{2,50})\s*[-=:]\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/gu;
-  const out=[]; let m;
-  while((m=rx.exec(t))!==null){
-    const name=(m[1]||'').replace(/[^\p{Script=Cyrillic}\s.'’-]/gu,' ').replace(/\s+/g,' ').trim();
-    const amtStr=String(m[2]||'').replace(',','.');
-    if(!amtStr.includes('.')) continue;
-    if(!/^\d+(\.\d{1,2})$/.test(amtStr)) continue;
-    const amount=parseFloat(amtStr);
-    if(name && Number.isFinite(amount)) out.push({name,amount:+amount.toFixed(2)});
-  }
-  return out;
-}
-async function saveEntry(name,amount){
-  const key=name.trim().toLowerCase();
-  const prev=await Store.names.get(key)||{name,total:0,items:[]};
-  prev.total=+(prev.total+amount).toFixed(2);
-  prev.items.push({amount,ts:Date.now()});
-  await Store.names.set(key,prev);
-}
-
-/* ===================== Сегментация (страница → редове) ===================== */
-const Segmentation={
-  prepPage(src){
-    const dpr=window.devicePixelRatio||1, scale=3.0;
-    const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
-    const out=document.createElement('canvas'); out.width=w; out.height=h;
-    const o=out.getContext('2d',{willReadFrequently:true});
-    o.filter='contrast(220%) brightness(180%)';
-    o.drawImage(src,0,0,w,h);
-    let img=o.getImageData(0,0,w,h), d=img.data;
-    for(let i=0;i<d.length;i+=4){
-      const r=d[i], g=d[i+1], b=d[i+2];
-      const lum=0.299*r+0.587*g+0.114*b;
-      const isInk=lum>220; // бяло мастило
-      const isBlue=b>60 && b>r+20 && b>g+10;
-      let v=isInk?0:255; if(isBlue) v=255;
-      d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
-    }
-    o.putImageData(img,0,0);
-    return out;
-  },
-  splitLines(pre){
-    const w=pre.width, h=pre.height;
-    const ctx=pre.getContext('2d',{willReadFrequently:true});
-    const data=ctx.getImageData(0,0,w,h).data;
-    const row=new Array(h).fill(0);
-    for(let y=0;y<h;y++){let acc=0;for(let x=0;x<w;x++){const i=(y*w+x)*4; if(data[i]<25) acc++;} row[y]=acc;}
-    const TH=Math.max(8, Math.floor(w*0.002));
-    const bands=[]; let inBand=false,y0=0;
-    for(let y=0;y<h;y++){
-      if(!inBand && row[y]>TH){inBand=true;y0=y;}
-      if(inBand && row[y]<=TH){const y1=y; if(y1-y0>20) bands.push([Math.max(0,y0-6),Math.min(h,y1+6)]); inBand=false;}
-    }
-    if(inBand) bands.push([Math.max(0,y0-6),h]);
-    const outs=[]; const pad=8;
-    bands.forEach(([a,b])=>{
-      let minX=w,maxX=0;
-      for(let y=a;y<b;y++){for(let x=0;x<w;x++){const i=(y*w+x)*4;if(data[i]<25){if(x<minX)minX=x;if(x>maxX)maxX=x;}}}
-      if(maxX<=minX) return;
-      const cx=Math.max(0,minX-pad), cw=Math.min(w,maxX+pad)-cx;
-      const cy=Math.max(0,a-pad), ch=Math.min(h,b+pad)-cy;
-      const crop=document.createElement('canvas'); crop.width=cw; crop.height=ch;
-      crop.getContext('2d').drawImage(pre,cx,cy,cw,ch,0,0,cw,ch);
-      outs.push(crop);
-    });
-    return outs;
-  }
-};
-
-/* ===================== Локален ИИ (символи + имена) ===================== */
-const LocalAI={
-  async load(profile){ return await Store.models.get(profile) },
-  _to28x(img){
-    const c=document.createElement('canvas'); c.width=28; c.height=28;
-    const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,28,28);
-    const d=ctx.getImageData(0,0,28,28).data;
-    const v=new Uint8Array(28*28);
-    for(let i=0,j=0;i<d.length;i+=4,j++){ v[j]=d[i]; }
-    return v;
-  },
-  _vec112x28(img){
-    const c=document.createElement('canvas'); c.width=112; c.height=28;
-    const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,112,28);
-    const d=ctx.getImageData(0,0,112,28).data;
-    const v=new Uint8Array(112*28);
-    for(let i=0,j=0;i<d.length;i+=4,j++){ v[j]=d[i]; }
-    return v;
-  },
-  _dist(a,b){ let s=0; const n=Math.min(a.length,b.length); for(let i=0;i<n;i++){ s+=Math.abs(a[i]-b[i]); } return s/n; }, // средна разлика [0..255]
-  recognizeLine(model, lineCanvas){
-    // символ по символ
-    const w=lineCanvas.width, h=lineCanvas.height;
-    const ctx=lineCanvas.getContext('2d',{willReadFrequently:true});
-    const D=ctx.getImageData(0,0,w,h).data;
-    const col=new Array(w).fill(0);
-    for(let x=0;x<w;x++){let acc=0;for(let y=0;y<h;y++){const i=(y*w+x)*4;if(D[i]<25) acc++;} col[x]=acc;}
-    const gap=Math.max(2,Math.floor(h*0.01));
-    const cuts=[]; let inGlyph=false,x0=0;
-    for(let x=0;x<w;x++){
-      if(!inGlyph && col[x]>0){inGlyph=true;x0=x;}
-      if(inGlyph && col[x]<=0){const x1=x; if(x1-x0>gap) cuts.push([x0,x1]); inGlyph=false;}
-    }
-    if(inGlyph) cuts.push([x0,w]);
-    if(!cuts.length) return { text:'', unknown:true };
-
-    const textPieces=[]; let unknown=false;
-    for(const [a,b] of cuts){
-      const cx=Math.max(0,a-1), cw=Math.min(w,b+1)-cx;
-      const sym=document.createElement('canvas'); sym.width=cw; sym.height=h;
-      sym.getContext('2d').drawImage(lineCanvas,cx,0,cw,h,0,0,cw,h);
-      const vec=this._to28x(sym);
-
-      let bestCh=''; let best=1e9;
-      for(const ch of Object.keys(model.samples||{})){
-        for(const s of (model.samples[ch]||[])){
-          const d=this._dist(vec, Uint8Array.from(s));
-          if(d<best){best=d; bestCh=ch;}
-        }
-      }
-      if(!bestCh){ textPieces.push('□'); unknown=true; }
-      else textPieces.push(bestCh);
-    }
-    return { text: normalizeBG(textPieces.join('')), unknown };
-  },
-  matchName(model, lineCanvas){
-    if(!model?.names?.length) return null;
-    const w=lineCanvas.width;
-    // вземи лява част (името обикновено е вляво от разделителя)
-    const left=document.createElement('canvas'); left.width=Math.floor(w*0.6); left.height=lineCanvas.height;
-    left.getContext('2d').drawImage(lineCanvas,0,0,left.width,left.height,0,0,left.width,left.height);
-    const vec=this._vec112x28(left);
-    let best=null, bestD=1e9;
-    for(const rec of model.names){
-      const d=this._dist(vec, Uint8Array.from(rec.vec));
-      if(d<bestD){bestD=d; best=rec;}
-    }
-    // прагове: <30 → силна прилика; <60 → само като подсказка
-    return best?{text:best.text, score:bestD}:null;
-  }
-};
-
-/* ===================== Cloud OCR ===================== */
-const CloudOCR={
-  async ocrPieces(piecesDataURLs){
-    const payload={ pieces: piecesDataURLs.map(p=>({imageBase64:p.split(',')[1]})) };
-    const r=await fetch(OCR_URL,{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const j=await r.json(); if(!r.ok || !j.ok) throw new Error(j?.error||('HTTP '+r.status));
-    return j;
-  }
-};
-
-/* ===================== UI / Приложение ===================== */
+/*** UI / Canvas ***/
 window.addEventListener('DOMContentLoaded',()=>{
-  // Настройки на отделна страница
-  document.getElementById('btnSettings').onclick=()=>{ location.href='settings.html' };
-
-  // Платно
   const canvas=document.getElementById('board');
   const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  function resize(){const dpr=window.devicePixelRatio||1;const r=canvas.getBoundingClientRect();
-    canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineJoin='round';ctx.lineCap='round';
-    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';}
+  let drawing=false,last=null;
+
+  function resize(){
+    const dpr=window.devicePixelRatio||1;
+    const r=canvas.getBoundingClientRect();
+    canvas.width=Math.floor(r.width*dpr);
+    canvas.height=Math.floor(r.height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.lineJoin='round';
+    ctx.lineCap='round';
+    ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#fff';
+  }
   window.addEventListener('resize',resize,{passive:true});
   window.addEventListener('orientationchange',()=>setTimeout(resize,50),{passive:true});
   resize();
+
   const isPen=e=>e.pointerType==='pen';
   const pos=e=>{const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,p:e.pressure||0.5}};
-  let drawing=false,last=null;
   canvas.addEventListener('pointerdown',e=>{if(!isPen(e))return;e.preventDefault();drawing=true;last=pos(e)});
   canvas.addEventListener('pointermove',e=>{if(!drawing||!isPen(e))return;const p=pos(e);ctx.lineWidth=2+p.p*3.5;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;});
   const stop=()=>{drawing=false;last=null};canvas.addEventListener('pointerup',stop);canvas.addEventListener('pointercancel',stop);canvas.addEventListener('pointerleave',stop);
 
-  // Панел/табоVE
-  const panel=document.getElementById('panel');
-  const btnSearch=document.getElementById('btnSearch');
-  const tabs=[...document.querySelectorAll('.tab')];
-  const secSearch=document.getElementById('tab-search');
-  const secReview=document.getElementById('tab-review');
-  function showPanel(){panel.style.display='block';resize()}
-  function activateTab(id){
-    tabs.forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
-    secSearch.hidden=(id!=='search'); secReview.hidden=(id!=='review');
-  }
-  btnSearch.onclick=()=>{showPanel();activateTab('search');renderSearch();renderReview();};
-  tabs.forEach(b=>b.onclick=()=>activateTab(b.dataset.tab));
+  const toastEl=document.getElementById('toast'); const hint=document.getElementById('hint');
+  function toast(m,ms=2600){toastEl.textContent=m;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),ms)}
+  const step=t=>{hint.textContent=t};
 
-  // Търсене
-  const q=document.getElementById('q');const rowsEl=document.getElementById('rows');const sumEl=document.getElementById('sum');const sugg=document.getElementById('suggestions');
-  async function refreshSuggestions(){const rows=await Store.names.all();sugg.innerHTML='';rows.sort((a,b)=>a.name.localeCompare(b.name,'bg')).forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
-  async function renderSearch(){
-    await refreshSuggestions();
-    const t=(q.value||'').trim().toLowerCase();
-    const rows=await Store.names.all();
+  async function saveEntry(name,amount){
+    const key=name.trim().toLowerCase();
+    const prev=await idb.get(key)||{name,total:0,items:[]};
+    prev.total=+(prev.total+amount).toFixed(2);
+    prev.items.push({amount,ts:Date.now()});
+    await idb.set(key,prev);
+  }
+  async function allEntries(){
+    const rows=[]; await idb.iterate(STORE,v=>rows.push(v));
+    rows.sort((a,b)=>a.name.localeCompare(b.name,'bg')); return rows;
+  }
+
+  const side=document.getElementById('side'),btnSearch=document.getElementById('btnSearch');
+  const tabSearch=document.getElementById('tabSearch'),tabReview=document.getElementById('tabReview');
+  const searchView=document.getElementById('searchView'),reviewView=document.getElementById('reviewView');
+  const q=document.getElementById('q'),rowsEl=document.getElementById('rows'),sumEl=document.getElementById('sum'),sugg=document.getElementById('suggestions');
+
+  function openSearch(){tabSearch.classList.add('active');tabReview.classList.remove('active');searchView.style.display='block';reviewView.style.display='none'}
+  function openReview(){tabReview.classList.add('active');tabSearch.classList.remove('active');reviewView.style.display='block';searchView.style.display='none';renderReview()}
+
+  tabSearch.onclick=openSearch; tabReview.onclick=openReview;
+
+  btnSearch.onclick=async()=>{side.classList.toggle('open');resize();if(side.classList.contains('open')){await refreshSuggestions();renderSearch(q.value);q.focus()}};
+  async function refreshSuggestions(){const rows=await allEntries();sugg.innerHTML='';rows.forEach(r=>{const o=document.createElement('option');o.value=r.name;sugg.appendChild(o)})}
+
+  async function renderSearch(term){
+    const t=(term||'').trim().toLowerCase();
+    const rows=await allEntries();
     const items=[];
-    rows.forEach(r=>{ if(!t || r.name.toLowerCase().includes(t)){ r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts})) } });
-    items.sort((a,b)=>a.name.localeCompare(b.name,'bg')||a.ts-b.ts);
+    rows.forEach(r=>{
+      if(!t || r.name.toLowerCase().includes(t)){
+        r.items.forEach(it=>items.push({name:r.name,amount:it.amount,ts:it.ts}));
+      }
+    });
+    items.sort((a,b)=>a.name.localeCompare(b.name,'bg') || a.ts-b.ts);
     let total=0; rowsEl.innerHTML='';
-    items.forEach(x=>{ total+=x.amount; const d=document.createElement('div'); d.className='row';
+    items.forEach(x=>{
+      total+=x.amount;
+      const d=document.createElement('div');
       const when=new Date(x.ts).toLocaleString('bg-BG',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
-      d.innerHTML=`<span>${x.name}</span><strong>${x.amount.toFixed(2)} лв</strong><small class="mono">${when}</small>`;
+      d.innerHTML=`<span>${x.name}</span><span>${x.amount.toFixed(2)} лв</span><small>${when}</small>`;
       rowsEl.appendChild(d);
     });
     sumEl.textContent=`${total.toFixed(2)} лв`;
   }
-  q.addEventListener('input',renderSearch);
+  q.addEventListener('input',()=>renderSearch(q.value));
 
-  // За преглед
+  /*** „За преглед“ ***/
   const reviewList=document.getElementById('reviewList');
+  function nameOnlyCyr(s){return (s||'').replace(/[^\p{Script=Cyrillic}\s.'’-]/gu,'').replace(/\s+/g,' ').trim()}
+  function sanitizeAmt(s){
+    // стриктно: разрешаваме 12,34 или 12.34 или 12
+    const raw=(s||'').replace(/[^\d,.\s]/g,'').replace(/\s+/g,'');
+    // ако има точно ЕДНА запетая и НЯМА точка → приемаме като десетичен разделител и обръщаме към точка:
+    if(/^\d{1,4},\d{1,2}$/.test(raw)) return +raw.replace(',', '.');
+    // ако има точка като десетичен:
+    if(/^\d{1,4}\.\d{1,2}$/.test(raw)) return +raw;
+    // само цели:
+    if(/^\d{1,4}$/.test(raw)) return +raw;
+    return NaN;
+  }
   async function renderReview(){
-    const items=await Store.review.list();
     reviewList.innerHTML='';
-    items.forEach(item=>{
+    const items=[];
+    await idb.iterate(REVIEW,(v,k)=>items.push({...v,id:k}));
+    if(!items.length){reviewList.innerHTML='<p>Няма чакащи редове.</p>';return;}
+    for(const item of items){
       const card=document.createElement('div'); card.className='review-card';
-      const txt=(item.text||'').replace(/\s+/g,' ').trim();
       card.innerHTML=`
         <div class="review-head"><strong>#${item.id}</strong><span class="pill">за преглед</span></div>
-        ${item.thumb?`<img class="thumb" src="${item.thumb}" alt="ред #${item.id}"/>`:''}
-        <div class="field">
-          <input class="name" placeholder="Име (кирилица)" value="${item.suggestName||txt}"/>
-          <input class="amt" placeholder="Сума (напр. 2,40)" inputmode="decimal"/>
+        <img class="thumb" alt="Фрагмент" src="${item.thumb}"/>
+        <div class="two-cols" style="margin-top:.5rem">
+          <label>Име (кирилица)
+            <input class="name" value="${item.name||''}" autocapitalize="off" autocorrect="off" spellcheck="false" />
+          </label>
+          <label>Сума
+            <input class="sum" value="${item.amount??''}" inputmode="decimal" />
+          </label>
         </div>
-        <div class="review-actions">
-          <button class="btn primary confirm">Потвърди</button>
-          <button class="btn delete">Изтрий</button>
-        </div>`;
-      card.querySelector('.confirm').onclick=async()=>{
-        const name=(card.querySelector('.name').value||'').trim();
-        const amtStr=(card.querySelector('.amt').value||'').trim().replace(',','.');
-        if(!/[\p{Script=Cyrillic}]/u.test(name)) return toast('Име на кирилица');
-        if(!/^\d+(\.\d{1,2})$/.test(amtStr)) return toast('Сума с десетичен разделител (напр. 2,40)');
-        await saveEntry(name,+parseFloat(amtStr).toFixed(2));
-        await Store.review.del(item.id); toast('Добавено'); renderReview(); renderSearch();
-      };
-      card.querySelector('.delete').onclick=async()=>{await Store.review.del(item.id); renderReview();};
+        <small>OCR: ${(item.ocrRaw||'')}</small>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem">
+          <button class="btn" data-act="del">Изтрий</button>
+          <button class="btn primary" data-act="ok">Потвърди</button>
+        </div>
+      `;
       reviewList.appendChild(card);
+
+      const nameEl=card.querySelector('.name');
+      const sumEl=card.querySelector('.sum');
+      card.addEventListener('click',async(ev)=>{
+        const act=ev.target?.getAttribute?.('data-act');
+        if(!act) return;
+        if(act==='del'){ await idb.del(item.id,REVIEW); renderReview(); return; }
+        if(act==='ok'){
+          const name=nameOnlyCyr(nameEl.value);
+          const amount=sanitizeAmt(sumEl.value);
+          if(!name || !Number.isFinite(amount)){alert('Попълни валидни име и сума (напр. 2,30 или 2.30).');return;}
+          await saveEntry(name,amount);
+          await idb.del(item.id,REVIEW);
+          renderReview();
+          toast(`Добавено: ${name} – ${amount.toFixed(2)} лв`);
+          await refreshSuggestions(); renderSearch(q.value);
+        }
+      });
+    }
+  }
+
+  /*** Подготовка за OCR + сегментация по редове ***/
+  function toBW(src){
+    const dpr=window.devicePixelRatio||1, scale=3;
+    const w=Math.floor(src.width/dpr*scale), h=Math.floor(src.height/dpr*scale);
+    const out=document.createElement('canvas'); out.width=w; out.height=h;
+    const o=out.getContext('2d',{willReadFrequently:true});
+    o.drawImage(src,0,0,w,h);
+    let img=o.getImageData(0,0,w,h), d=img.data;
+    // Премахване на линии/фон, оставяме мастилото черно
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i], g=d[i+1], b=d[i+2];
+      const bright=r+g+b;
+      const isBlue = b>60 && b>r+20 && b>g+10; // линиите
+      if(isBlue){ d[i]=d[i+1]=d[i+2]=255; continue; }
+      // всичко друго: прагове към черно-бяло
+      const gray=(r*0.2126+g*0.7152+b*0.0722);
+      const v = gray<170 ? 0 : 255;
+      d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+    }
+    o.putImageData(img,0,0);
+    return out;
+  }
+
+  function segmentRows(bwCanvas){
+    const w=bwCanvas.width, h=bwCanvas.height;
+    const g=bwCanvas.getContext('2d').getImageData(0,0,w,h).data;
+    const rows=[]; let inBand=false, start=0;
+    for(let y=0;y<h;y++){
+      let dark=0;
+      for(let x=0;x<w;x++) if(g[(y*w+x)*4]===0) dark++;
+      const inkRatio = dark / w;
+      if(!inBand && inkRatio>0.012){ inBand=true; start=y; }
+      if(inBand && inkRatio<0.004){
+        const end=y;
+        if(end-start>22) rows.push([Math.max(0,start-4), Math.min(h,end+4)]);
+        inBand=false;
+      }
+    }
+    if(inBand) rows.push([Math.max(0,start-4), h-1]);
+
+    const ctx=bwCanvas.getContext('2d');
+    return rows.map(([y0,y1],i)=>{
+      const ch=y1-y0+1;
+      const crop=document.createElement('canvas'); crop.width=w; crop.height=ch;
+      crop.getContext('2d').drawImage(bwCanvas,0,y0,w,ch,0,0,w,ch);
+      const thumb=document.createElement('canvas'); const scale=Math.min(1,420/w);
+      thumb.width=Math.floor(w*scale); thumb.height=Math.floor(ch*scale);
+      thumb.getContext('2d').drawImage(crop,0,0,thumb.width,thumb.height);
+      return {id:Date.now()+i, data:crop.toDataURL('image/png'), thumb:thumb.toDataURL('image/png')};
     });
   }
 
-  // Композит (печатен текст върху реда) за Cloud
-  function overlayPrinted(lineCanvas, printedText){
-    const w=lineCanvas.width, h=lineCanvas.height;
-    const c=document.createElement('canvas'); c.width=w; c.height=h;
-    const g=c.getContext('2d');
-    g.drawImage(lineCanvas,0,0);
-    g.globalAlpha=0.85;
-    g.fillStyle='#ffffff';
-    g.font=`${Math.max(16, Math.floor(h*0.6))}px ui-sans-serif,system-ui,Segoe UI,Roboto`;
-    g.textBaseline='middle';
-    g.fillText(printedText, Math.floor(h*0.1), Math.floor(h*0.5));
-    g.globalAlpha=1;
-    return c.toDataURL('image/png');
+  /*** Заявка към OCR с retry/timeout ***/
+  async function fetchJSON(url, options={}, timeoutMs=15000, retries=2){
+    for(let attempt=0; attempt<=retries; attempt++){
+      const ctrl=new AbortController();
+      const t=setTimeout(()=>ctrl.abort(), timeoutMs);
+      try{
+        const r=await fetch(url,{...options,signal:ctrl.signal});
+        clearTimeout(t);
+        const j=await r.json().catch(()=> ({}));
+        if(!r.ok) throw new Error(j?.error || ('HTTP '+r.status));
+        return j;
+      }catch(e){
+        clearTimeout(e);
+        if(attempt===retries) throw e;
+        await new Promise(r=>setTimeout(r, 400*(attempt+1)));
+      }
+    }
+  }
+  async function sendLineToOCR(slice){
+    const base64 = slice.data.split(',')[1];
+    return fetchJSON(OCR_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ imageBase64: base64 })
+    });
   }
 
-  // Зареди модел (по подразбиране профил „Димчо“)
-  let currentModel={samples:{},names:[]};
-  (async()=>{ currentModel=await LocalAI.load('Димчо'); })();
+  // резервно парсване (само кирилица)
+  function pickPairs(text){
+    const results=[];
+    if(!text) return results;
+    const norm = (s)=>s.normalize('NFC').replace(/[–—−]/g,'-').replace(/\u00A0/g,' ');
+    // позволяваме „Име - 2,30“ или „Име: 2.30“ или „Име = 2“
+    const rx=/([\p{Script=Cyrillic}\s.'’-]{2,50})\s*[-=:]\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/gu;
+    for(const line of norm(text).split(/\r?\n/)){
+      let m; while((m=rx.exec(line))!==null){
+        const name = m[1].replace(/[^\p{Script=Cyrillic}\s.'’-]/gu,' ').replace(/\s+/g,' ').trim();
+        // стриктни правила за сумата, за да не правим 2,30 -> 230
+        const raw = String(m[2]).replace(/\s+/g,'');
+        if(!/^\d{1,4}([.,]\d{1,2})?$/.test(raw)) continue;
+        const amt = parseFloat(raw.replace(',', '.'));
+        if(name && Number.isFinite(amt)) results.push({name,amount:+amt.toFixed(2)});
+      }
+    }
+    return results;
+  }
 
-  // Запази
+  async function processSlices(slices){
+    let okCount=0, pushToReview=0;
+    for(const s of slices){
+      try{
+        const resp=await sendLineToOCR(s);
+        // 1) ползвай сървърните entries; 2) fallback към локалния парсер
+        const entries = (Array.isArray(resp.entries) && resp.entries.length)
+          ? resp.entries
+          : pickPairs(resp.text);
+        if(entries.length){
+          for(const e of entries) await saveEntry(e.name,e.amount);
+          okCount+=entries.length;
+        }else{
+          await idb.set(String(s.id), {thumb:s.thumb, ocrRaw:(resp.text||'').slice(0,160), name:'', amount:'', ts:Date.now()}, REVIEW);
+          pushToReview++;
+        }
+      }catch(err){
+        console.error('[OCR slice]',err);
+        await idb.set(String(s.id), {thumb:s.thumb, ocrRaw:'(грешка)', name:'', amount:'', ts:Date.now()}, REVIEW);
+        pushToReview++;
+      }
+    }
+    if(okCount) toast(`Записани редове: ${okCount}`);
+    if(pushToReview) toast(`За преглед: ${pushToReview}`);
+    if(side.classList.contains('open') && tabReview.classList.contains('active')) renderReview();
+    await refreshSuggestions(); renderSearch(q.value);
+  }
+
+  /*** Запази ***/
   const btnSave=document.getElementById('btnSave');
   btnSave.onclick=async()=>{
     try{
-      btnSave.disabled=true; step('Запис: снимка…');
-
-      // PNG на цялата страница
+      // 1) снимка
+      step('Запис: снимка…');
       const blob=await new Promise(r=>canvas.toBlob(b=>r(b),'image/png'));
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download=`veresia-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
       document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},0);
 
-      // Сегментация → линии
-      step('Сегментация…');
-      const pre=Segmentation.prepPage(canvas);
-      const lines=Segmentation.splitLines(pre);
+      // 2) черно/бяло и сегментация
+      const bw=toBW(canvas);
+      const slices=segmentRows(bw);
 
-      // Нов лист — можеш да пишеш веднага
+      // 3) нов лист веднага (можеш да пишеш)
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      if(!lines.length){ toast('Няма текст'); btnSave.disabled=false; return; }
-
-      const piecesForCloud=[];
-      const reviewWithSuggest=[]; // {thumb,suggestName}
-      let saved=0, toReview=0;
-
-      for(const line of lines){
-        const res=LocalAI.recognizeLine(currentModel, line);
-        const txt=res.text || '';
-        const parsed=parseManyStrict(txt);
-
-        if(parsed.length && !res.unknown){
-          for(const e of parsed){ await saveEntry(e.name,e.amount); saved++; }
-          continue;
-        }
-
-        // опитай съвпадение по обучени ИМЕНА
-        const hit=LocalAI.matchName(currentModel, line); // {text, score} | null
-        const strict = hit && hit.score<30; // силна прилика
-        const soft   = hit && hit.score<60;
-
-        // ако има сума в txt, но името е неясно → ако има STRONG hit, записваме
-        const amtM = /([0-9]{1,4})(?:[.,]([0-9]{1,2}))/.exec(txt);
-        if(amtM && strict){
-          const amount=parseFloat((amtM[1]+'.'+(amtM[2]||'0')).replace('..','.'));
-          if(Number.isFinite(amount)){ await saveEntry(hit.text,+amount.toFixed(2)); saved++; continue; }
-        }
-
-        // иначе пращаме към Cloud; ако имаме soft/strict име — отпечатай го като подсказка
-        const printed = (soft||strict) ? (hit.text+' - ') : (txt && txt.replace(/□+/g,' '));
-        const dataURL = printed ? overlayPrinted(line, printed) : line.toDataURL('image/png');
-        piecesForCloud.push(dataURL);
-        if(soft||strict) reviewWithSuggest.push({thumb:dataURL,suggestName:hit.text});
-        else reviewWithSuggest.push({thumb:dataURL,suggestName:''});
-      }
-
-      if(piecesForCloud.length){
-        step('Cloud OCR…');
-        try{
-          const r=await CloudOCR.ocrPieces(piecesForCloud);
-          if(Array.isArray(r.entries)) for(const e of r.entries){ await saveEntry(e.name,e.amount); saved++; }
-          // за тези, които пак не се разчитат — попълваме „За преглед“, със запазена подсказка
-          if(Array.isArray(r.review)){
-            for(let i=0;i<r.review.length;i++){
-              const base=r.review[i];
-              const sug=reviewWithSuggest[i];
-              await Store.review.add({thumb:(base.thumb||sug.thumb), text:(base.text||''), suggestName:sug.suggestName||''});
-              toReview++;
-            }
-          }
-        }catch(err){
-          console.error('[Cloud OCR]',err);
-          for(const sug of reviewWithSuggest){
-            await Store.review.add({thumb:sug.thumb, text:'', suggestName:sug.suggestName||''}); toReview++;
-          }
-        }
-      }
-
-      toast(`Записани: ${saved} • За преглед: ${toReview}`);
-      step('Готово');
-      renderSearch(); renderReview();
-    }catch(err){
-      console.error(err); toast('Грешка при „Запази“'); step('Грешка');
-    }finally{ btnSave.disabled=false }
+      // 4) OCR асинхронно
+      void processSlices(slices);
+      step('Готово (OCR работи във фона)');
+    }catch(err){ console.error(err); toast('Грешка при „Запази“'); step('Грешка'); }
   };
 
-  (async()=>{ renderSearch(); renderReview(); })();
+  (async()=>{await refreshSuggestions()})();
 });
 </script>
 </body>
